@@ -4,21 +4,22 @@ from telethon.sessions import StringSession
 from telethon.tl.functions.channels import JoinChannelRequest
 from telethon.tl.functions.messages import StartBotRequest
 
-# --- [ إعدادات الهوية ] ---
-# النظام هنا ذكي: إذا تم تشغيله من "المصنع" يأخذ بيانات الزبون، وإذا شغلته أنت يأخذ بياناتك.
+# --- [ إعدادات الهوية الأساسية ] ---
+API_ID = 39719802 
+API_HASH = '032a5697fcb9f3beeab8005d6601bde9'
+
+# فحص: هل هذا بوت زبون أم البوت المصنع الأساسي؟
 if len(sys.argv) > 2:
     CURRENT_TOKEN = sys.argv[1]
     CURRENT_MASTER = int(sys.argv[2])
     IS_SUB_BOT = True
 else:
-    API_ID = 39719802 
-    API_HASH = '032a5697fcb9f3beeab8005d6601bde9'
     CURRENT_MASTER = 8504553407  
     CURRENT_TOKEN = '8331141429:AAGeDiqh7Wqk0fiOQMDNbPSGTuXztIP0SzA'
     IS_SUB_BOT = False
 
-# ملفات منفصلة لكل مستخدم لضمان عدم تداخل البيانات
-ACCS_FILE = f'accs_{CURRENT_MASTER}.json'
+# ملف بيانات مستقل لكل مالك بوت
+ACCS_FILE = f'database_user_{CURRENT_MASTER}.json'
 
 def load_db(file):
     if os.path.exists(file):
@@ -28,27 +29,36 @@ def load_db(file):
 def save_db(file, data):
     with open(file, 'w') as f: json.dump(data, f)
 
-# --- [ 1. وظيفة تفعيل الرابط وتخطي الاشتراك ] ---
+# --- [ 1. وظيفة تفعيل الرابط وتخطي الاشتراك الإجباري ] ---
 async def activate_and_join(ss, phone, bot_user, ref_id, owner_id):
     try:
-        client = TelegramClient(StringSession(ss), 39719802, '032a5697fcb9f3beeab8005d6601bde9')
+        client = TelegramClient(StringSession(ss), API_ID, API_HASH)
         await client.connect()
-        # تفعيل الرابط
+        
+        # تفعيل الرابط (النقاط تذهب لصاحب الرابط)
         await client(StartBotRequest(bot=bot_user, referrer_id=int(owner_id), start_param=ref_id))
-        await asyncio.sleep(2)
-        # تخطي الاشتراك الإجباري
+        await asyncio.sleep(3)
+        
+        # تخطي الاشتراك (الانضمام للقنوات الإجبارية)
         msg = await client.get_messages(bot_user, limit=1)
         if msg[0].reply_markup:
             for row in msg[0].reply_markup.rows:
                 for b in row.buttons:
                     if b.url:
-                        try: await client(JoinChannelRequest(b.url.split('/')[-1]))
-                        except: pass
+                        # استخراج اسم القناة من الرابط والانضمام
+                        channel_username = b.url.split('/')[-1]
+                        try:
+                            await client(JoinChannelRequest(channel_username))
+                        except:
+                            pass # في حال كانت القناة خاصة أو هناك خطأ
+        
+        # إرسال ستارت مرة ثانية للتأكد من التفعيل بعد الانضمام
         await client.send_message(bot_user, "/start")
         await client.disconnect()
-    except: pass
+    except Exception as e:
+        print(f"Error in activation for {phone}: {e}")
 
-# --- [ 2. ماكينة التجميع اليومي الذكي ] ---
+# --- [ 2. ماكينة التجميع التلقائي للهدايا (خلفية) ] ---
 async def daily_gift_worker():
     while True:
         db = load_db(ACCS_FILE)
@@ -57,123 +67,144 @@ async def daily_gift_worker():
             target_bot = db[uid_str].get('target_bot', '@t06bot')
             for phone, info in db[uid_str].get('accounts', {}).items():
                 try:
-                    client = TelegramClient(StringSession(info['ss']), 39719802, '032a5697fcb9f3beeab8005d6601bde9')
+                    client = TelegramClient(StringSession(info['ss']), API_ID, API_HASH)
                     await client.connect()
                     await client.send_message(target_bot, "/start")
-                    await asyncio.sleep(3)
+                    await asyncio.sleep(4)
                     
-                    # البحث عن "زيادة النقاط" ثم "الهدية"
-                    msgs = await client.get_messages(target_bot, limit=1)
-                    if msgs[0].reply_markup:
-                        for row in msgs[0].reply_markup.rows:
+                    # الخطوة الأولى: البحث عن زر "زيادة النقاط"
+                    msg1 = await client.get_messages(target_bot, limit=1)
+                    found_increase = False
+                    if msg1[0].reply_markup:
+                        for row in msg1[0].reply_markup.rows:
                             for btn in row.buttons:
-                                if any(x in btn.text for x in ["زيادة", "تجميع"]):
-                                    await msgs[0].click(text=btn.text)
-                                    await asyncio.sleep(2)
+                                if "زيادة" in btn.text or "تجميع" in btn.text:
+                                    await msg1[0].click(text=btn.text)
+                                    found_increase = True
                                     break
-                        
-                        new_msgs = await client.get_messages(target_bot, limit=1)
-                        for row in new_msgs[0].reply_markup.rows:
-                            for btn in row.buttons:
-                                if any(x in btn.text for x in ["هدية", "الهدية"]):
-                                    await new_msgs[0].click(text=btn.text)
-                                    db[uid_str]['accounts'][phone]['balance'] = db[uid_str]['accounts'][phone].get('balance', 0) + 1000 
+                    
+                    if found_increase:
+                        await asyncio.sleep(3)
+                        # الخطوة الثانية: البحث عن زر "الهدية اليومية"
+                        msg2 = await client.get_messages(target_bot, limit=1)
+                        if msg2[0].reply_markup:
+                            for row in msg2[0].reply_markup.rows:
+                                for btn in row.buttons:
+                                    if "هدية" in btn.text or "الهدية" in btn.text:
+                                        await msg2[0].click(text=btn.text)
+                                        # إضافة 1000 نقطة وهمية للمتابعة في البوت
+                                        db[uid_str]['accounts'][phone]['balance'] = db[uid_str]['accounts'][phone].get('balance', 0) + 1000 
+                    
                     await client.disconnect()
-                except: continue
+                except:
+                    continue
             save_db(ACCS_FILE, db)
+        
+        # الانتظار 24 ساعة للدورة القادمة
         await asyncio.sleep(24 * 3600)
 
-# --- [ 3. البوت الرئيسي ولوحة التحكم ] ---
-bot = TelegramClient(f'bot_session_{CURRENT_MASTER}', 39719802, '032a5697fcb9f3beeab8005d6601bde9').start(bot_token=CURRENT_TOKEN)
+# --- [ 3. البوت الرئيسي والتحكم ] ---
+bot = TelegramClient(f'session_bot_{CURRENT_MASTER}', API_ID, API_HASH).start(bot_token=CURRENT_TOKEN)
 
 @bot.on(events.NewMessage(pattern='/start'))
-async def start(event):
+async def start_handler(event):
     if event.sender_id != CURRENT_MASTER:
-        return await event.reply("❌ عذراً، هذا البوت مخصص لصاحبه فقط.")
+        return await event.reply("❌ البوت خاص بمشترك معين.")
     
-    btns = [
-        [Button.inline("➕ اضافه حساب", data="add_acc"), Button.inline("➖ مسح حساب", data="del_acc")],
-        [Button.inline("🚀 بدء التجميع", data="start_farming")],
+    markup = [
+        [Button.inline("➕ إضافة حساب", data="add_acc"), Button.inline("➖ حذف حساب", data="del_acc")],
+        [Button.inline("🚀 تفعيل الرابط (50 رقم)", data="start_farming")],
         [Button.inline("📊 فحص الرصيد", data="check_points")],
-        [Button.inline("💰 تحويل النقاط المكتملة", data="transfer_now")],
+        [Button.inline("💰 تحويل 10,000 نقطة", data="transfer_now")],
     ]
-    if not IS_SUB_BOT: # زر المصنع يظهر لك أنت فقط في بوتك الأساسي
-        btns.append([Button.inline("💎 [المالك] تنصيب بوت لزبون", data="deploy_bot")])
+    # زر المصنع يظهر للمالك الأساسي فقط وفي البوت الأساسي
+    if not IS_SUB_BOT and event.sender_id == 8504553407:
+        markup.append([Button.inline("💎 [مصنع] تنصيب لزبون", data="deploy_bot")])
     
-    await event.reply("**أهلاً بك في النسخة النهائية من سورس العرب**\n\n- نظام المصنع والتجميع التلقائي مفعل.", buttons=btns)
+    await event.reply("**💎 سورس العرب المتكامل (النسخة النهائية)**\n\n- نظام التجميع والتحويل وتخطي الاشتراك مفعل.", buttons=markup)
 
 @bot.on(events.CallbackQuery(data="deploy_bot"))
-async def deploy(event):
-    if IS_SUB_BOT: return
+async def deploy_logic(event):
     async with bot.conversation(event.sender_id) as conv:
-        await conv.send_message("⚙️ **أرسل توكن بوت الزبون:**")
-        tkn = (await conv.get_response()).text
-        await conv.send_message("👤 **أرسل آيدي (ID) الزبون:**")
-        uid = (await conv.get_response()).text
-        # تشغيل البوت الجديد كعملية مستقلة
-        subprocess.Popen([sys.executable, sys.argv[0], tkn, uid])
-        await conv.send_message(f"✅ تم تشغيل بوت الزبون بنجاح!")
+        await conv.send_message("⚙️ أرسل توكن بوت الزبون:")
+        token_input = (await conv.get_response()).text
+        await conv.send_message("👤 أرسل آيدي (ID) الزبون:")
+        id_input = (await conv.get_response()).text
+        
+        # تشغيل السورس كعملية جديدة لهذا الزبون
+        subprocess.Popen([sys.executable, sys.argv[0], token_input, id_input])
+        await conv.send_message("✅ تم تشغيل بوت الزبون بنجاح!")
 
 @bot.on(events.CallbackQuery(data="add_acc"))
-async def add(event):
+async def add_logic(event):
     async with bot.conversation(event.sender_id) as conv:
         await conv.send_message("🔹 أرسل كود الـ (String Session):")
-        ss = (await conv.get_response()).text
+        ss_val = (await conv.get_response()).text
         await conv.send_message("🔹 أرسل رقم الهاتف:")
-        ph = (await conv.get_response()).text
+        ph_val = (await conv.get_response()).text
+        
         db = load_db(ACCS_FILE)
         uid = str(event.sender_id)
         if uid not in db: db[uid] = {'accounts': {}, 'target_bot': '@t06bot'}
-        db[uid]['accounts'][ph] = {'ss': ss, 'balance': 0}
+        
+        db[uid]['accounts'][ph_val] = {'ss': ss_val, 'balance': 0}
         save_db(ACCS_FILE, db)
-        await conv.send_message(f"✅ تم إضافة {ph}")
+        await conv.send_message(f"✅ تم إضافة الحساب {ph_val}")
 
 @bot.on(events.CallbackQuery(data="check_points"))
-async def check(event):
+async def check_logic(event):
     db = load_db(ACCS_FILE)
     accs = db.get(str(event.sender_id), {}).get('accounts', {})
-    if not accs: return await event.answer("⚠️ لا توجد أرقام.", alert=True)
-    msg = "📊 **رصيد حساباتك:**\n\n"
-    for ph, info in accs.items(): msg += f"📱 `{ph}` : {info.get('balance', 0)} نقطة\n"
+    if not accs: return await event.answer("⚠️ لا توجد حسابات.", alert=True)
+    
+    msg = "📊 **إحصائيات حساباتك:**\n\n"
+    for ph, info in accs.items():
+        msg += f"📱 `{ph}` : {info.get('balance', 0)} نقطة\n"
     await event.respond(msg)
 
 @bot.on(events.CallbackQuery(data="start_farming"))
-async def farming(event):
+async def farming_logic(event):
     async with bot.conversation(event.sender_id) as conv:
-        await conv.send_message("🔗 أرسل رابط الدعوة:")
-        link = (await conv.get_response()).text
-        match = re.search(r"t\.me/([\w_]+)\?start=([\w\d]+)", link)
-        if not match: return await conv.send_message("❌ رابط خطأ.")
-        bot_u, r_id = match.group(1), match.group(2)
+        await conv.send_message("🔗 أرسل رابط الدعوة المراد تفعيله:")
+        link_text = (await conv.get_response()).text
+        match = re.search(r"t\.me/([\w_]+)\?start=([\w\d]+)", link_text)
+        if not match: return await conv.send_message("❌ الرابط غير صحيح.")
+        
+        bot_user, ref_id = match.group(1), match.group(2)
         db = load_db(ACCS_FILE)
         uid = str(event.sender_id)
-        db[uid]['target_bot'] = f"@{bot_u}"
+        db[uid]['target_bot'] = f"@{bot_user}"
         save_db(ACCS_FILE, db)
-        await conv.send_message("🚀 جاري تفعيل الـ 50 رقم...")
+        
+        await conv.send_message("🚀 جاري بدء تفعيل الأرقام وتخطي الاشتراك...")
         for ph, info in db[uid]['accounts'].items():
-            asyncio.create_task(activate_and_join(info['ss'], ph, bot_u, r_id, event.sender_id))
-        await conv.send_message("✅ اكتمل التفعيل!")
+            asyncio.create_task(activate_and_join(info['ss'], ph, bot_user, ref_id, event.sender_id))
+        await conv.send_message("✅ اكتملت المهمة!")
 
 @bot.on(events.CallbackQuery(data="transfer_now"))
-async def transfer(event):
+async def transfer_logic(event):
     db = load_db(ACCS_FILE)
     uid = str(event.sender_id)
-    limit, t_bot = 10000, db.get(uid, {}).get('target_bot', '@t06bot')
-    await event.answer("⏳ جاري التحويل...", alert=False)
+    limit = 10000
+    target = db.get(uid, {}).get('target_bot', '@t06bot')
+    
+    await event.answer("⏳ جاري فحص وتحويل الحسابات (10k+)...", alert=False)
     for ph, info in db.get(uid, {}).get('accounts', {}).items():
         if info.get('balance', 0) >= limit:
             try:
-                cl = TelegramClient(StringSession(info['ss']), 39719802, '032a5697fcb9f3beeab8005d6601bde9')
+                cl = TelegramClient(StringSession(info['ss']), API_ID, API_HASH)
                 await cl.connect()
-                await cl.send_message(t_bot, f"نقل {event.sender_id} كل النقاط")
+                # أمر التحويل لبوت المليار/الصقر
+                await cl.send_message(target, f"نقل {event.sender_id} كل النقاط")
                 db[uid]['accounts'][ph]['balance'] = 0
                 await cl.disconnect()
             except: continue
     save_db(ACCS_FILE, db)
-    await event.respond("✅ تم تحويل كل الحسابات التي وصلت 10k.")
+    await event.respond("✅ تم تحويل النقاط من جميع الحسابات المؤهلة.")
 
+# --- [ الإقلاع النهائي ] ---
 if __name__ == '__main__':
-    print("🚀 السورس يعمل بكامل طاقته...")
+    print(f"🚀 البوت {'الفرعي' if IS_SUB_BOT else 'الأساسي'} انطلق...")
     loop = asyncio.get_event_loop()
     loop.create_task(daily_gift_worker())
     bot.run_until_disconnected()
