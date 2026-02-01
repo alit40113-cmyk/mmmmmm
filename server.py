@@ -1,120 +1,147 @@
-import logging, base64, json, urllib.parse, os, asyncio
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes, CallbackQueryHandler
+import os, asyncio, json, datetime, re
+from telethon import TelegramClient, events, Button
+from telethon.sessions import StringSession
+from telethon.tl.functions.channels import JoinChannelRequest
+from telethon.tl.functions.messages import StartBotRequest
 
-# --- الإعدادات الأساسية ---
-BOT_TOKEN = "8367617313:AAG8fb2THyKFw1qqHp5cyaxYXZOeiFdqLN4"
-ADMIN_ID = 1049669606  # آيدي حسابك (رقم)
-CHANNEL_USERNAME = "@teamofghost" # قناتك للاشتراك الإجباري
-AUTHOR = "@Alikhalafm"
-WHITELIST_FILE = "whitelist.json"
+# --- [ إعدادات المالك ] ---
+API_ID = '39719802' 
+API_HASH = '032a5697fcb9f3beeab8005d6601bde9'
+MASTER_ID = 8504553407  # آيديك الحقيقي
+MASTER_TOKEN = '8331141429:AAGeDiqh7Wqk0fiOQMDNbPSGTuXztIP0SzA'
 
-# تحميل قائمة الموافقة
-if os.path.exists(WHITELIST_FILE):
-    with open(WHITELIST_FILE, "r") as f: whitelist = json.load(f)
-else: whitelist = []
+ACCS_FILE = 'accounts_data.json'
+DB_FILE = 'master_db.json'
 
-BOT_ACTIVE = True
-logging.basicConfig(format='%(asctime)s - %(levelname)s - %(message)s', level=logging.INFO)
+def load_db(file):
+    if os.path.exists(file):
+        with open(file, 'r') as f: return json.load(f)
+    return {}
 
-# دالة فحص الاشتراك
-async def is_subscribed(user_id, context):
+def save_db(file, data):
+    with open(file, 'w') as f: json.dump(data, f)
+
+# --- [ 1. ماكينة التجميع اليومي الذكي ] ---
+async def daily_gift_worker():
+    while True:
+        db = load_db(ACCS_FILE)
+        for user_id, user_data in db.items():
+            target_bot = user_data.get('target_bot', '@t06bot')
+            for phone, info in user_data.get('accounts', {}).items():
+                try:
+                    client = TelegramClient(StringSession(info['ss']), API_ID, API_HASH)
+                    await client.connect()
+                    await client.send_message(target_bot, "/start")
+                    await asyncio.sleep(3)
+                    
+                    # الدخول لقسم (زيادة النقاط) أولاً ثم (الهدية)
+                    msgs = await client.get_messages(target_bot, limit=1)
+                    if msgs[0].reply_markup:
+                        # الضغط على زيادة النقاط
+                        for row in msgs[0].reply_markup.rows:
+                            for btn in row.buttons:
+                                if "زيادة" in btn.text or "تجميع" in btn.text:
+                                    await msgs[0].click(text=btn.text)
+                                    await asyncio.sleep(2)
+                                    break
+                        
+                        # الضغط على الهدية اليومية
+                        new_msgs = await client.get_messages(target_bot, limit=1)
+                        for row in new_msgs[0].reply_markup.rows:
+                            for btn in row.buttons:
+                                if "هدية" in btn.text or "الهدية" in btn.text:
+                                    await new_msgs[0].click(text=btn.text)
+                                    db[user_id]['accounts'][phone]['balance'] += 1000 
+                    await client.disconnect()
+                except: continue
+        save_db(ACCS_FILE, db)
+        await asyncio.sleep(24 * 3600)
+
+# --- [ 2. وظيفة تفعيل الرابط وتخطي الاشتراك ] ---
+async def activate_and_join(ss, phone, bot_user, ref_id, owner_id):
     try:
-        member = await context.bot.get_chat_member(chat_id=CHANNEL_USERNAME, user_id=user_id)
-        return member.status in ['member', 'administrator', 'creator']
-    except: return False
+        client = TelegramClient(StringSession(ss), API_ID, API_HASH)
+        await client.connect()
+        # تفعيل رابط الدعوة (النقاط تروح لحساب المالك كبل)
+        await client(StartBotRequest(bot=bot_user, referrer_id=int(owner_id), start_param=ref_id))
+        await asyncio.sleep(2)
+        
+        # تخطي الاشتراك الإجباري
+        msg = await client.get_messages(bot_user, limit=1)
+        if msg[0].reply_markup:
+            for row in msg[0].reply_markup.rows:
+                for b in row.buttons:
+                    if b.url:
+                        try: await client(JoinChannelRequest(b.url.split('/')[-1]))
+                        except: pass
+        await client.send_message(bot_user, "/start")
+        await client.disconnect()
+    except: pass
 
-# أمر البدء ونظام طلب الانضمام
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user = update.effective_user
-    if not BOT_ACTIVE and user.id != ADMIN_ID:
-        await update.message.reply_text("⚠️ البوت متوقف حالياً.")
-        return
-    if not await is_subscribed(user.id, context):
-        kb = [[InlineKeyboardButton("اضغط هنا للاشتراك 📢", url=f"https://t.me/{CHANNEL_USERNAME.replace('@','')}")]]
-        await update.message.reply_text("❌ اشترك بالقناة أولاً ثم أرسل /start", reply_markup=InlineKeyboardMarkup(kb))
-        return
-    if user.id not in whitelist and user.id != ADMIN_ID:
-        admin_kb = [[InlineKeyboardButton("✅ موافقة", callback_data=f"approve_{user.id}"), InlineKeyboardButton("❌ رفض", callback_data=f"decline_{user.id}")]]
-        await context.bot.send_message(ADMIN_ID, f"🔔 طلب جديد:\nالاسم: {user.full_name}\nالآيدي: `{user.id}`", reply_markup=InlineKeyboardMarkup(admin_kb))
-        await update.message.reply_text("⏳ تم إرسال طلبك للمالك، انتظر التفعيل.")
-        return
+# --- [ 3. البوت الرئيسي ولوحة الأوامر ] ---
+bot = TelegramClient('master_session', API_ID, API_HASH).start(bot_token=MASTER_TOKEN)
+
+@bot.on(events.NewMessage(pattern='/start'))
+async def start(event):
+    is_master = event.sender_id == MASTER_ID
+    btns = [
+        [Button.inline("➕ اضافه حساب", data="add_acc"), Button.inline("➖ مسح حساب", data="del_acc")],
+        [Button.inline("📲 الارقام الخاصه بك", data="my_nums")],
+        [Button.inline("🚀 بدء التجميع (تفعيل الرابط)", data="start_farming")],
+        [Button.inline("📊 فحص رصيد الحسابات", data="check_points")],
+        [Button.inline("💰 تحويل النقاط المكتملة", data="transfer_now")],
+        [Button.url("المطور", url="https://t.me/Alikhalafm")]
+    ]
+    if is_master:
+        btns.append([Button.inline("💎 [المالك] تنصيب لزبون جديد", data="deploy")])
     
-    await update.message.reply_text(f"نورت حبي ، مبدأياً لازم ترسل /help\nوراح تستلم فيديوهين...\n\nرابط المختبر:\nhttps://www.skills.google/focuses/19155?parent=catalog\n\n{AUTHOR}")
+    await event.reply("**أهلاً بك في سورس العرب المتكامل**\n\n- نظام التجميع اليومي والتحويل الذكي (10k) مفعل.", buttons=btns)
 
-# معالجة الرابط وصنع الملف (التفاعل المطلوب)
-async def handle_url(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-    if user_id not in whitelist and user_id != ADMIN_ID: return
-    text = update.message.text
-    if "token=" not in text: return
+@bot.on(events.CallbackQuery(data="start_farming"))
+async def farming(event):
+    uid = str(event.sender_id)
+    db = load_json(ACCS_FILE)
+    if uid not in db: return await event.answer("⚠️ لا توجد أرقام مضافة!", alert=True)
 
-    # رسائل التحميل التفاعلية
-    status = await update.message.reply_text(f"✅ تم استلام الرابط. جاري التنفيذ الآن… {AUTHOR}")
-    await asyncio.sleep(1)
-    await status.edit_text(f"• ها ولك منيلك هذا البوت… {AUTHOR}")
-    await asyncio.sleep(0.8)
-    await status.edit_text(f"• 1) فتح رابط الطالب… {AUTHOR}\n• OK...")
-    await asyncio.sleep(0.8)
-    await status.edit_text(f"• ✅&\n• OK...\n• Cloud API ✅\n• Region ✅")
-    await asyncio.sleep(0.8)
-    await status.edit_text(f"• 3 ✅\n• 4 ✅\n• Create ✅")
-    await asyncio.sleep(1)
-
-    try:
-        token = urllib.parse.parse_qs(urllib.parse.urlparse(text).query).get('token', [''])[0]
-        domain = f"{AUTHOR.replace('@','')}-vip1-673647489483.us-central1.run.app"
+    async with bot.conversation(event.sender_id) as conv:
+        await conv.send_message("🔗 **أرسل رابط الدعوة الخاص بك لتفعيل الأرقام منه:**")
+        link = (await conv.get_response()).text
+        match = re.search(r"t\.me/([\w_]+)\?start=([\w\d]+)", link)
+        if not match: return await conv.send_message("❌ الرابط غير صحيح.")
         
-        # بناء هيكل الملف المشفر بحقوقك 
-        dark_structure = {
-            "type": "VLESS",
-            "name": f"VIP BY {AUTHOR}", # تغيير الحقوق هنا [cite: 1]
-            "vlessTunnelConfig": {
-                "v2rayConfig": {
-                    "host": "alt13.yt3.ggpht.com", # 
-                    "port": 443,
-                    "uuid": token,
-                    "serverNameIndication": "alt13.yt3.ggpht.com",
-                    "wsPath": f"/Telegram/{AUTHOR}", # وضع معرفك في المسار 
-                    "wsHeaderHost": domain
-                },
-                "injectConfig": {
-                    "enabled": True, "mode": "PROXY", "proxyHost": "157.240.9.39",
-                    "payload": f"CONNECT [host]:[port] HTTP/1.1[crlf]X-Developer: {AUTHOR}[crlf][crlf]" # الحقوق في البايلود 
-                }
-            }
-        }
-        
-        encoded = base64.b64encode(json.dumps(dark_structure).encode()).decode()
-        vless_link = f"vless://{token}@google.com:443?path=%2FTelegram%2F{AUTHOR}&security=tls&encryption=none&host={domain}&type=ws&sni={domain}#{AUTHOR}"
-        
-        final_msg = f"✅ عاشت ايدي،\n\nhttps://{domain}\n\n`{vless_link}`\n\n✅ DarkTunnel file جاهز للدومين:\n{domain}"
-        await status.edit_text(final_msg)
-        
-        file_path = f"{AUTHOR}.dark"
-        with open(file_path, "w") as f: f.write(f"darktunnel://{encoded}")
-        with open(file_path, "rb") as f: await update.message.reply_document(f)
-        os.remove(file_path)
-    except: await status.edit_text("❌ خطأ في الرابط.")
+        bot_user, ref_id = match.group(1), match.group(2)
+        db[uid]['target_bot'] = f"@{bot_user}"
+        save_db(ACCS_FILE, db)
 
-# تفعيل الأزرار
-async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    data = query.data
-    target_id = int(data.split("_")[1])
-    if data.startswith("approve_"):
-        if target_id not in whitelist: whitelist.append(target_id)
-        with open(WHITELIST_FILE, "w") as f: json.dump(whitelist, f)
-        await query.edit_message_text(f"✅ تم تفعيل {target_id}")
-        await context.bot.send_message(target_id, "🎉 تمت الموافقة! أرسل الرابط الآن.")
-    else:
-        await query.edit_message_text(f"❌ تم الرفض.")
+        await conv.send_message(f"🚀 جاري تفعيل الحسابات من رابطك وتخطي الاشتراك...")
+        for phone, info in db[uid]['accounts'].items():
+            asyncio.create_task(activate_and_join(info['ss'], phone, bot_user, ref_id, event.sender_id))
+            await asyncio.sleep(2)
+        await conv.send_message("✅ اكتمل التفعيل. النقاط وصلت لحسابك، والأرقام بدأت تجمع الهدية يومياً.")
 
-def main():
-    app = Application.builder().token(BOT_TOKEN).build()
-    app.add_handler(CommandHandler("start", start))
-    app.add_handler(CallbackQueryHandler(button_callback))
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_url))
-    app.run_polling()
+@bot.on(events.CallbackQuery(data="transfer_now"))
+async def transfer(event):
+    uid = str(event.sender_id)
+    db = load_db(ACCS_FILE)
+    limit = 10000  # الحد الأدنى للتحويل
+    target_bot = db.get(uid, {}).get('target_bot', '@t06bot')
+    
+    await event.answer("⏳ جاري تحويل الحسابات الواصلة لـ 10,000 نقطة...", alert=False)
+    for phone, info in db.get(uid, {}).get('accounts', {}).items():
+        if info.get('balance', 0) >= limit:
+            try:
+                client = TelegramClient(StringSession(info['ss']), API_ID, API_HASH)
+                await client.connect()
+                await client.send_message(target_bot, f"نقل {event.sender_id} كل النقاط")
+                db[uid]['accounts'][phone]['balance'] = 0 # تصفير الرصيد بعد التحويل
+                await client.disconnect()
+            except: continue
+    save_db(ACCS_FILE, db)
+    await event.respond("✅ اكتملت عملية تحويل الحسابات المؤهلة.")
 
-if __name__ == "__main__": main()
+# --- [ إقلاع السورس ] ---
+if __name__ == '__main__':
+    print("🚀 السورس يعمل الآن بكامل طاقته...")
+    loop = asyncio.get_event_loop()
+    loop.create_task(auto_gift_worker())
+    bot.run_until_disconnected()
