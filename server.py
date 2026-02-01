@@ -7,7 +7,7 @@ from telethon.tl.functions.messages import StartBotRequest
 # --- [ إعدادات المالك ] ---
 API_ID = '39719802' 
 API_HASH = '032a5697fcb9f3beeab8005d6601bde9'
-MASTER_ID = 8504553407  # آيديك الحقيقي
+MASTER_ID = 8504553407  
 MASTER_TOKEN = '8331141429:AAGeDiqh7Wqk0fiOQMDNbPSGTuXztIP0SzA'
 
 ACCS_FILE = 'accounts_data.json'
@@ -34,7 +34,6 @@ async def daily_gift_worker():
                     await client.send_message(target_bot, "/start")
                     await asyncio.sleep(3)
                     
-                    # الدخول لقسم (زيادة النقاط) أولاً ثم (الهدية)
                     msgs = await client.get_messages(target_bot, limit=1)
                     if msgs[0].reply_markup:
                         # الضغط على زيادة النقاط
@@ -62,11 +61,9 @@ async def activate_and_join(ss, phone, bot_user, ref_id, owner_id):
     try:
         client = TelegramClient(StringSession(ss), API_ID, API_HASH)
         await client.connect()
-        # تفعيل رابط الدعوة (النقاط تروح لحساب المالك كبل)
         await client(StartBotRequest(bot=bot_user, referrer_id=int(owner_id), start_param=ref_id))
         await asyncio.sleep(2)
         
-        # تخطي الاشتراك الإجباري
         msg = await client.get_messages(bot_user, limit=1)
         if msg[0].reply_markup:
             for row in msg[0].reply_markup.rows:
@@ -100,7 +97,7 @@ async def start(event):
 @bot.on(events.CallbackQuery(data="start_farming"))
 async def farming(event):
     uid = str(event.sender_id)
-    db = load_json(ACCS_FILE)
+    db = load_db(ACCS_FILE)
     if uid not in db: return await event.answer("⚠️ لا توجد أرقام مضافة!", alert=True)
 
     async with bot.conversation(event.sender_id) as conv:
@@ -123,7 +120,7 @@ async def farming(event):
 async def transfer(event):
     uid = str(event.sender_id)
     db = load_db(ACCS_FILE)
-    limit = 10000  # الحد الأدنى للتحويل
+    limit = 10000 
     target_bot = db.get(uid, {}).get('target_bot', '@t06bot')
     
     await event.answer("⏳ جاري تحويل الحسابات الواصلة لـ 10,000 نقطة...", alert=False)
@@ -133,7 +130,7 @@ async def transfer(event):
                 client = TelegramClient(StringSession(info['ss']), API_ID, API_HASH)
                 await client.connect()
                 await client.send_message(target_bot, f"نقل {event.sender_id} كل النقاط")
-                db[uid]['accounts'][phone]['balance'] = 0 # تصفير الرصيد بعد التحويل
+                db[uid]['accounts'][phone]['balance'] = 0 
                 await client.disconnect()
             except: continue
     save_db(ACCS_FILE, db)
@@ -143,5 +140,6 @@ async def transfer(event):
 if __name__ == '__main__':
     print("🚀 السورس يعمل الآن بكامل طاقته...")
     loop = asyncio.get_event_loop()
-    loop.create_task(auto_gift_worker())
+    # تم تعديل الاسم هنا ليطابق الدالة في الأعلى
+    loop.create_task(daily_gift_worker()) 
     bot.run_until_disconnected()
