@@ -4,22 +4,19 @@ from telethon.sessions import StringSession
 from telethon.tl.functions.channels import JoinChannelRequest
 from telethon.tl.functions.messages import StartBotRequest
 
-# --- [ إعدادات الهوية والديناميكية ] ---
+# --- [ إعدادات الهوية ] ---
 API_ID = 39719802 
 API_HASH = '032a5697fcb9f3beeab8005d6601bde9'
 
 if len(sys.argv) > 2:
-    # إعدادات بوت الزبون (يتم استلامها من المصنع)
     CURRENT_TOKEN = sys.argv[1]
     CURRENT_MASTER = int(sys.argv[2])
     IS_SUB_BOT = True
 else:
-    # إعدادات المالك الأساسي (أنت)
     CURRENT_MASTER = 8504553407  
     CURRENT_TOKEN = '8331141429:AAGeDiqh7Wqk0fiOQMDNbPSGTuXztIP0SzA'
     IS_SUB_BOT = False
 
-# ملفات البيانات والاشتراكات
 ACCS_FILE = f'accs_{CURRENT_MASTER}.json'
 CONFIG_FILE = f'config_{CURRENT_MASTER}.json'
 
@@ -31,7 +28,29 @@ def load_db(file):
 def save_db(file, data):
     with open(file, 'w') as f: json.dump(data, f)
 
-# --- [ 1. وظيفة تخطي الاشتراك والتفعيل ] ---
+# --- [ 1. وظيفة التحقق من السيشن والرقم ] ---
+async def verify_account(ss, phone_input):
+    try:
+        clean_phone = re.sub(r'\D', '', phone_input)
+        temp_client = TelegramClient(StringSession(ss), API_ID, API_HASH)
+        await temp_client.connect()
+        
+        if not await temp_client.is_user_authorized():
+            await temp_client.disconnect()
+            return False, "⚠️ السيشن منتهي أو غير صالح!"
+        
+        me = await temp_client.get_me()
+        actual_phone = re.sub(r'\D', '', me.phone)
+        await temp_client.disconnect()
+        
+        if clean_phone not in actual_phone:
+            return False, f"⚠️ الرقم غير مطابق! السيشن يخص: +{actual_phone}"
+        
+        return True, "✅ تم التحقق بنجاح"
+    except Exception as e:
+        return False, f"⚠️ خطأ في الفحص: {str(e)}"
+
+# --- [ 2. وظيفة تخطي الاشتراك والتفعيل ] ---
 async def activate_and_join(ss, phone, bot_user, ref_id, owner_id):
     try:
         client = TelegramClient(StringSession(ss), API_ID, API_HASH)
@@ -49,7 +68,7 @@ async def activate_and_join(ss, phone, bot_user, ref_id, owner_id):
         await client.disconnect()
     except: pass
 
-# --- [ 2. ماكينة التجميع اليومي ] ---
+# --- [ 3. ماكينة التجميع اليومي ] ---
 async def daily_gift_worker():
     while True:
         db = load_db(ACCS_FILE)
@@ -81,7 +100,7 @@ async def daily_gift_worker():
             save_db(ACCS_FILE, db)
         await asyncio.sleep(24 * 3600)
 
-# --- [ 3. البوت الرئيسي ] ---
+# --- [ 4. البوت الرئيسي ] ---
 bot = TelegramClient(f'bot_{CURRENT_MASTER}', API_ID, API_HASH).start(bot_token=CURRENT_TOKEN)
 
 @bot.on(events.NewMessage(pattern='/start'))
@@ -89,41 +108,26 @@ async def start(event):
     if event.sender_id != CURRENT_MASTER: return
     
     config = load_db(CONFIG_FILE)
-    expiry = config.get('expiry', 'غير محدود')
-    limit = config.get('max_accounts', 'لا يوجد حد')
-
+    db = load_db(ACCS_FILE)
+    accs_count = len(db.get(str(CURRENT_MASTER), {}).get('accounts', {}))
+    
     btns = [
         [Button.inline("➕ إضافة حساب", data="add_acc"), Button.inline("➖ حذف حساب", data="del_acc")],
+        [Button.inline(f"📊 حساباتك: {accs_count}", data="stats")],
         [Button.inline("🚀 بدء التجميع", data="start_farming")],
         [Button.inline("📊 فحص الرصيد", data="check_points")],
         [Button.inline("💰 تحويل 10,000", data="transfer_now")],
     ]
-    if not IS_SUB_BOT: # المصنع يظهر لك أنت فقط
+    if not IS_SUB_BOT:
         btns.append([Button.inline("💎 [المالك] تنصيب لزبون", data="deploy_bot")])
     
-    await event.reply(f"🚀 **سورس المصنع المطور**\n\n📅 انتهاء الاشتراك: `{expiry}`\n📱 حد الأرقام: `{limit}`", buttons=btns)
+    await event.reply(f"🚀 **سورس المصنع المطور**\n📅 انتهاء الاشتراك: `{config.get('expiry', 'غير محدود')}`", buttons=btns)
 
-@bot.on(events.CallbackQuery(data="deploy_bot"))
-async def deploy(event):
-    if IS_SUB_BOT: return
-    async with bot.conversation(event.sender_id) as conv:
-        await conv.send_message("⚙️ **أرسل توكن بوت الزبون:**")
-        tkn = (await conv.get_response()).text
-        await conv.send_message("👤 **أرسل آيدي (ID) الزبون:**")
-        uid = (await conv.get_response()).text
-        await conv.send_message("⏳ **عدد أيام الاشتراك (مثلاً: 30):**")
-        days = (await conv.get_response()).text
-        await conv.send_message("📱 **الحد الأقصى للأرقام (مثلاً: 50):**")
-        mx = (await conv.get_response()).text
-
-        # حفظ إعدادات الزبون قبل التشغيل
-        exp = (datetime.datetime.now() + datetime.timedelta(days=int(days))).strftime('%Y-%m-%d')
-        with open(f"config_{uid}.json", "w") as f:
-            json.dump({"expiry": exp, "max_accounts": int(mx)}, f)
-        
-        # تشغيل البوت كعملية مستقلة
-        subprocess.Popen([sys.executable, sys.argv[0], tkn, uid])
-        await conv.send_message(f"✅ تم تشغيل بوت الزبون بنجاح!")
+@bot.on(events.CallbackQuery(data="stats"))
+async def stats_handler(event):
+    db = load_db(ACCS_FILE)
+    accs = db.get(str(event.sender_id), {}).get('accounts', {})
+    await event.answer(f"📱 مجموع حساباتك المضافة: {len(accs)}", alert=True)
 
 @bot.on(events.CallbackQuery(data="add_acc"))
 async def add(event):
@@ -139,12 +143,39 @@ async def add(event):
     async with bot.conversation(event.sender_id) as conv:
         await conv.send_message("🔹 أرسل كود الـ (String Session):")
         ss = (await conv.get_response()).text
-        await conv.send_message("🔹 أرسل الرقم:")
+        await conv.send_message("🔹 أرسل رقم الهاتف المرتبط:")
         ph = (await conv.get_response()).text
-        if uid_str not in db: db[uid_str] = {'accounts': {}, 'target_bot': '@t06bot'}
-        db[uid_str]['accounts'][ph] = {'ss': ss, 'balance': 0}
-        save_db(ACCS_FILE, db)
-        await conv.send_message("✅ تم الحفظ.")
+        
+        load_msg = await conv.send_message("🔍 جاري التحقق من صحة البيانات...")
+        is_ok, result = await verify_account(ss, ph)
+        
+        if is_ok:
+            if uid_str not in db: db[uid_str] = {'accounts': {}, 'target_bot': '@t06bot'}
+            db[uid_str]['accounts'][ph] = {'ss': ss, 'balance': 0}
+            save_db(ACCS_FILE, db)
+            await load_msg.edit(f"✅ {result}\nتم حفظ الحساب.")
+        else:
+            await load_msg.edit(f"❌ {result}")
+
+@bot.on(events.CallbackQuery(data="deploy_bot"))
+async def deploy(event):
+    if IS_SUB_BOT: return
+    async with bot.conversation(event.sender_id) as conv:
+        await conv.send_message("⚙️ **توكن الزبون:**")
+        tkn = (await conv.get_response()).text
+        await conv.send_message("👤 **آيدي الزبون:**")
+        uid = (await conv.get_response()).text
+        await conv.send_message("⏳ **الأيام:**")
+        days = (await conv.get_response()).text
+        await conv.send_message("📱 **حد الأرقام:**")
+        mx = (await conv.get_response()).text
+
+        exp = (datetime.datetime.now() + datetime.timedelta(days=int(days))).strftime('%Y-%m-%d')
+        with open(f"config_{uid}.json", "w") as f:
+            json.dump({"expiry": exp, "max_accounts": int(mx)}, f)
+        
+        subprocess.Popen([sys.executable, sys.argv[0], tkn, uid])
+        await conv.send_message(f"✅ تم تشغيل بوت الزبون بنجاح!")
 
 @bot.on(events.CallbackQuery(data="check_points"))
 async def check(event):
@@ -168,7 +199,7 @@ async def farming(event):
         save_db(ACCS_FILE, db)
         for ph, info in db[uid_str]['accounts'].items():
             asyncio.create_task(activate_and_join(info['ss'], ph, bot_u, r_id, event.sender_id))
-        await conv.send_message("🚀 جاري التفعيل...")
+        await conv.send_message("🚀 جاري التفعيل لجميع الحسابات...")
 
 @bot.on(events.CallbackQuery(data="transfer_now"))
 async def transfer(event):
