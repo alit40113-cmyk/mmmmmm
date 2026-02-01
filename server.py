@@ -4,13 +4,14 @@ from telethon.sessions import StringSession
 from telethon.tl.functions.channels import JoinChannelRequest
 from telethon.tl.functions.messages import StartBotRequest
 
-# --- [ إعدادات المالك ] ---
+# --- [ إعدادات المالك الأساسية ] ---
 API_ID = '39719802' 
 API_HASH = '032a5697fcb9f3beeab8005d6601bde9'
 MASTER_ID = 8504553407  
 MASTER_TOKEN = '8331141429:AAGeDiqh7Wqk0fiOQMDNbPSGTuXztIP0SzA'
 
 ACCS_FILE = 'accounts_data.json'
+DB_FILE = 'master_db.json'
 
 def load_db(file):
     if os.path.exists(file):
@@ -37,7 +38,7 @@ async def daily_gift_worker():
                     if msgs[0].reply_markup:
                         for row in msgs[0].reply_markup.rows:
                             for btn in row.buttons:
-                                if "زيادة" in btn.text or "تجميع" in btn.text:
+                                if any(x in btn.text for x in ["زيادة", "تجميع"]):
                                     await msgs[0].click(text=btn.text)
                                     await asyncio.sleep(2)
                                     break
@@ -45,7 +46,7 @@ async def daily_gift_worker():
                         new_msgs = await client.get_messages(target_bot, limit=1)
                         for row in new_msgs[0].reply_markup.rows:
                             for btn in row.buttons:
-                                if "هدية" in btn.text or "الهدية" in btn.text:
+                                if any(x in btn.text for x in ["هدية", "الهدية"]):
                                     await new_msgs[0].click(text=btn.text)
                                     db[user_id]['accounts'][phone]['balance'] = db[user_id]['accounts'][phone].get('balance', 0) + 1000 
                     await client.disconnect()
@@ -71,12 +72,19 @@ async def activate_and_join(ss, phone, bot_user, ref_id, owner_id):
         await client.disconnect()
     except: pass
 
-# --- [ 3. البوت الرئيسي ومعالجة الأزرار ] ---
+# --- [ 3. البوت الرئيسي ومعالجة الأوامر ] ---
 bot = TelegramClient('master_session', API_ID, API_HASH).start(bot_token=MASTER_TOKEN)
 
 @bot.on(events.NewMessage(pattern='/start'))
 async def start(event):
+    uid = str(event.sender_id)
+    m_db = load_db(DB_FILE)
     is_master = event.sender_id == MASTER_ID
+    is_client = uid in m_db and datetime.datetime.strptime(m_db[uid]['expiry'], '%Y-%m-%d') > datetime.datetime.now()
+
+    if not is_master and not is_client:
+        return await event.reply("❌ **اشتراكك غير مفعل.**\nللتواصل مع المطور: @Alikhalafm")
+
     btns = [
         [Button.inline("➕ اضافه حساب", data="add_acc"), Button.inline("➖ مسح حساب", data="del_acc")],
         [Button.inline("🚀 بدء التجميع (تفعيل الرابط)", data="start_farming")],
@@ -85,70 +93,88 @@ async def start(event):
         [Button.url("المطور", url="https://t.me/Alikhalafm")]
     ]
     if is_master: btns.append([Button.inline("💎 [المالك] تنصيب لزبون", data="deploy")])
-    await event.reply("**أهلاً بك في سورس العرب النهائي**\n\n- نظام التجميع اليومي والتحويل الذكي جاهز.", buttons=btns)
+    await event.reply(f"✅ **أهلاً بك.. السورس يعمل بنجاح!**\n📅 انتهاء الاشتراك: {m_db.get(uid, {}).get('expiry', 'غير محدود')}", buttons=btns)
+
+@bot.on(events.CallbackQuery(data="deploy"))
+async def deploy(event):
+    if event.sender_id != MASTER_ID: return
+    async with bot.conversation(event.sender_id) as conv:
+        await conv.send_message("👤 أرسل آيدي (ID) الزبون:")
+        u_id = (await conv.get_response()).text
+        await conv.send_message("⏳ كم يوماً؟")
+        days = (await conv.get_response()).text
+        await conv.send_message("📱 أقصى عدد حسابات؟")
+        mx = (await conv.get_response()).text
+        m_db = load_db(DB_FILE)
+        m_db[u_id] = {'expiry': (datetime.datetime.now() + datetime.timedelta(days=int(days))).strftime('%Y-%m-%d'), 'max': int(mx)}
+        save_db(DB_FILE, m_db)
+        await conv.send_message("✅ تم التفعيل بنجاح.")
 
 @bot.on(events.CallbackQuery(data="add_acc"))
-async def add_acc(event):
+async def add(event):
+    uid = str(event.sender_id)
+    m_db = load_db(DB_FILE)
+    db = load_db(ACCS_FILE)
+    current_count = len(db.get(uid, {}).get('accounts', {}))
+    max_allowed = m_db.get(uid, {}).get('max', 1000)
+    
+    if not (event.sender_id == MASTER_ID) and current_count >= max_allowed:
+        return await event.answer(f"⚠️ وصلت للحد الأقصى ({max_allowed} رقم)!", alert=True)
+
     async with bot.conversation(event.sender_id) as conv:
-        await conv.send_message("🔹 أرسل الآن كود الـ (String Session):")
+        await conv.send_message("🔹 أرسل كود الـ (String Session):")
         ss = (await conv.get_response()).text
         await conv.send_message("🔹 أرسل رقم الهاتف:")
         ph = (await conv.get_response()).text
-        db = load_db(ACCS_FILE)
-        uid = str(event.sender_id)
         if uid not in db: db[uid] = {'accounts': {}, 'target_bot': '@t06bot'}
         db[uid]['accounts'][ph] = {'ss': ss, 'balance': 0}
         save_db(ACCS_FILE, db)
-        await conv.send_message(f"✅ تم إضافة {ph} بنجاح.")
+        await conv.send_message("✅ تم الإضافة.")
 
 @bot.on(events.CallbackQuery(data="check_points"))
-async def check_pts(event):
+async def check(event):
     db = load_db(ACCS_FILE)
-    uid = str(event.sender_id)
-    accs = db.get(uid, {}).get('accounts', {})
+    accs = db.get(str(event.sender_id), {}).get('accounts', {})
     if not accs: return await event.answer("⚠️ لا توجد حسابات.", alert=True)
-    msg = "📊 **رصيد حساباتك المجمعة:**\n\n"
-    for ph, info in accs.items(): msg += f"📱 `{ph}` : {info.get('balance', 0)} نقطة\n"
+    msg = "📊 **الرصيد:**\n"
+    for ph, info in accs.items(): msg += f"📱 `{ph}`: {info.get('balance',0)}\n"
     await event.respond(msg)
 
 @bot.on(events.CallbackQuery(data="start_farming"))
 async def farming(event):
-    uid = str(event.sender_id)
-    db = load_db(ACCS_FILE)
-    if uid not in db: return await event.answer("⚠️ أضف حسابات أولاً!", alert=True)
     async with bot.conversation(event.sender_id) as conv:
-        await conv.send_message("🔗 **أرسل رابط الدعوة الخاص بك:**")
+        await conv.send_message("🔗 أرسل رابط الدعوة:")
         link = (await conv.get_response()).text
         match = re.search(r"t\.me/([\w_]+)\?start=([\w\d]+)", link)
-        if not match: return await conv.send_message("❌ الرابط غير صحيح.")
-        bot_user, ref_id = match.group(1), match.group(2)
-        db[uid]['target_bot'] = f"@{bot_user}"
+        if not match: return await conv.send_message("❌ رابط خطأ.")
+        bot_u, r_id = match.group(1), match.group(2)
+        db = load_db(ACCS_FILE)
+        uid = str(event.sender_id)
+        db[uid]['target_bot'] = f"@{bot_u}"
         save_db(ACCS_FILE, db)
         for ph, info in db[uid]['accounts'].items():
-            asyncio.create_task(activate_and_join(info['ss'], ph, bot_user, ref_id, event.sender_id))
-        await conv.send_message("✅ تم تفعيل الأرقام من رابطك!")
+            asyncio.create_task(activate_and_join(info['ss'], ph, bot_u, r_id, event.sender_id))
+        await conv.send_message("🚀 جاري التفعيل...")
 
 @bot.on(events.CallbackQuery(data="transfer_now"))
 async def transfer(event):
-    uid = str(event.sender_id)
     db = load_db(ACCS_FILE)
-    limit = 10000 
-    target_bot = db.get(uid, {}).get('target_bot', '@t06bot')
+    uid = str(event.sender_id)
+    limit, t_bot = 10000, db.get(uid, {}).get('target_bot', '@t06bot')
     for ph, info in db.get(uid, {}).get('accounts', {}).items():
         if info.get('balance', 0) >= limit:
             try:
-                client = TelegramClient(StringSession(info['ss']), API_ID, API_HASH)
-                await client.connect()
-                await client.send_message(target_bot, f"نقل {event.sender_id} كل النقاط")
+                cl = TelegramClient(StringSession(info['ss']), API_ID, API_HASH)
+                await cl.connect()
+                await cl.send_message(t_bot, f"نقل {event.sender_id} كل النقاط")
                 db[uid]['accounts'][ph]['balance'] = 0
-                await client.disconnect()
+                await cl.disconnect()
             except: continue
     save_db(ACCS_FILE, db)
-    await event.respond("✅ تم تحويل الحسابات الجاهزة.")
+    await event.respond("✅ تم تحويل الجاهز.")
 
-# --- [ الإقلاع ] ---
 if __name__ == '__main__':
-    print("🚀 السورس يعمل الآن...")
+    print("🚀 السورس يعمل...")
     loop = asyncio.get_event_loop()
-    loop.create_task(daily_gift_worker()) 
+    loop.create_task(daily_gift_worker())
     bot.run_until_disconnected()
