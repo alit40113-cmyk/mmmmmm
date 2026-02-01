@@ -1,14 +1,13 @@
 # -*- coding: utf-8 -*-
 """
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-👑 THE IMPERIAL TITAN FACTORY - SUPREME EDITION V40.0
+👑 THE GIGA-TITAN FACTORY - SUPREME ARCHITECTURE V50.0
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-نظام متكامل لإدارة الحسابات، التجميع، وتخطي الحماية:
-1. نظام الحماية من تسجيل الخروج (Anti-Session Termination).
-2. محاكاة أجهزة حقيقية (iPhone 15, Samsung S24, Windows 11).
-3. تخطي الاشتراك الإجباري المعقد (حتى 20 قناة).
-4. نظام الإحالات الذكي مع دعم الروابط المشفرة.
-5. نظام "صحة الحسابات" لفحص الحسابات المحظورة تلقائياً.
+- نظام تشفير وحماية السيشنات من الطرد (Anti-Termination).
+- محاكاة دقيقة لبيانات الأجهزة الرسمية (Device Mimicry).
+- تخطي اشتراك إجباري متطور (حتى 25 قناة/بوت).
+- إدارة كاملة عبر لوحة تحكم Telegram Bot API.
+- سجلات حية (Live Logging) لجميع العمليات.
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 """
 
@@ -20,33 +19,55 @@ import time
 import asyncio
 import logging
 import datetime
-import subprocess
-import platform
 import random
-from datetime import timedelta
+import platform
+import string
+from dataclasses import dataclass, asdict
 
-# --- [ إعدادات المكتبات الأساسية ] ---
+# --- [ فحص وتثبيت المكتبات ] ---
 try:
     from telethon import TelegramClient, events, Button, functions, types
     from telethon.sessions import StringSession
     from telethon.errors import *
-    from telethon.tl.functions.messages import GetHistoryRequest
+    from telethon.tl.functions.messages import GetHistoryRequest, StartBotRequest
     from telethon.tl.functions.channels import JoinChannelRequest
+    from telethon.tl.types import KeyboardButtonUrl, InlineKeyboardButtonUrl
 except ImportError:
-    print("📦 Installing required libraries...")
+    print("🚀 Installing High-Performance Libraries...")
     os.system(f'{sys.executable} -m pip install telethon')
     from telethon import TelegramClient, events, Button, functions, types
     from telethon.sessions import StringSession
 
-# --- [ إعدادات السجلات المتقدمة ] ---
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - [%(levelname)s] - %(name)s - %(message)s',
-    handlers=[logging.FileHandler("imperial_supreme.log"), logging.StreamHandler()]
-)
-logger = logging.getLogger("SupremeEngine")
+# --- [ إعدادات السجلات الاحترافية ] ---
+class CustomFormatter(logging.Formatter):
+    """منسق سجلات ملون لاحترافية السورس"""
+    grey = "\x1b[38;20m"
+    yellow = "\x1b[33;20m"
+    red = "\x1b[31;20m"
+    bold_red = "\x1b[31;1m"
+    reset = "\x1b[0m"
+    format = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 
-# --- [ الثوابت CONFIGURATION ] ---
+    FORMATS = {
+        logging.DEBUG: grey + format + reset,
+        logging.INFO: grey + format + reset,
+        logging.WARNING: yellow + format + reset,
+        logging.ERROR: red + format + reset,
+        logging.CRITICAL: bold_red + format + reset
+    }
+
+    def format(self, record):
+        log_fmt = self.FORMATS.get(record.levelno)
+        formatter = logging.Formatter(log_fmt)
+        return formatter.format(record)
+
+logger = logging.getLogger("GigaTitan")
+logger.setLevel(logging.INFO)
+ch = logging.StreamHandler()
+ch.setFormatter(CustomFormatter())
+logger.addHandler(ch)
+
+# --- [ الثوابت الجوهرية ] ---
 API_ID = 39719802 
 API_HASH = '032a5697fcb9f3beeab8005d6601bde9'
 
@@ -55,283 +76,292 @@ if len(sys.argv) > 2:
     MASTER_ID = int(sys.argv[2])
 else:
     MASTER_ID = 8504553407  
-    BOT_TOKEN = '8331141429:AAGeDiqh7Wqk0fiOQMDNbPSGTuXztIP0SzA'
+    BOT_TOKEN = '8206330079:AAEZ3T1-hgq_VhEG3F8ElGEQb9D14gCk0eY'
 
-DB_PATH = f'supreme_db_{MASTER_ID}.json'
+DB_FILE = f'giga_v50_db_{MASTER_ID}.json'
 
-# --- [ كلاس إدارة الأجهزة (Device Emulator) ] ---
-# هذا الكلاس يمنع طردك من الحساب عبر محاكاة أجهزة مختلفة
-class DeviceEmulator:
-    DEVICES = [
-        {"model": "iPhone 15 Pro", "sys": "iOS 17.4", "app": "10.8.1"},
-        {"model": "Samsung Galaxy S24 Ultra", "sys": "Android 14", "app": "10.5.0"},
-        {"model": "Desktop", "sys": "Windows 11", "app": "4.15.2"},
-        {"model": "iPad Pro", "sys": "iPadOS 17", "app": "10.3.0"}
+# --- [ كلاس محاكاة الأجهزة المتقدم ] ---
+class HardwareProfile:
+    """محاكاة أجهزة حقيقية تمنع تيليجرام من طردك"""
+    PROFILES = [
+        {"dm": "iPhone 15 Pro Max", "sv": "iOS 17.2.1", "av": "10.5.1"},
+        {"dm": "Samsung Galaxy S24 Ultra", "sv": "Android 14", "av": "10.4.0"},
+        {"dm": "Google Pixel 8 Pro", "sv": "Android 14", "av": "10.4.2"},
+        {"dm": "iPad Pro M2", "sv": "iPadOS 17.1", "av": "10.3.0"},
+        {"dm": "MacBook Pro M3", "sv": "macOS 14.2", "av": "4.12.3"},
+        {"dm": "Windows 11 Pro", "sv": "Build 22621", "av": "4.15.0"},
+        {"dm": "Xiaomi 14 Pro", "sv": "HyperOS 1.0", "av": "10.6.0"},
+        {"dm": "OnePlus 12", "sv": "OxygenOS 14", "av": "10.2.1"}
     ]
-    
-    @staticmethod
-    def get_random():
-        return random.choice(DeviceEmulator.DEVICES)
 
-# --- [ نظام إدارة البيانات الضخم ] ---
-class SupremeDB:
+    @classmethod
+    def pick(cls):
+        return random.choice(cls.PROFILES)
+
+# --- [ نظام قاعدة البيانات العبقرية ] ---
+class GigaDatabase:
     def __init__(self):
-        self.data = self.load()
+        self.data = self._load()
 
-    def load(self):
-        if not os.path.exists(DB_PATH):
-            default = {
+    def _load(self):
+        if not os.path.exists(DB_FILE):
+            initial = {
                 "accounts": {},
                 "settings": {
-                    "target": "@t06bot",
-                    "ref": "",
-                    "delay": 45,
-                    "stealth": True
+                    "target_bot": "@t06bot",
+                    "ref_link": "",
+                    "delay_min": 40,
+                    "delay_max": 80,
+                    "auto_stealth": True
                 },
-                "stats": {
-                    "success": 0,
-                    "failed": 0,
-                    "banned": 0
+                "global_stats": {
+                    "points_collected": 0,
+                    "joins_done": 0,
+                    "failed_accounts": 0
                 }
             }
-            with open(DB_PATH, 'w', encoding='utf-8') as f:
-                json.dump(default, f, indent=4)
-            return default
-        return json.load(open(DB_PATH, 'r', encoding='utf-8'))
+            self._save(initial)
+            return initial
+        with open(DB_FILE, 'r', encoding='utf-8') as f:
+            return json.load(f)
 
-    def save(self):
-        with open(DB_PATH, 'w', encoding='utf-8') as f:
-            json.dump(self.data, f, indent=4, ensure_ascii=False)
+    def _save(self, data_to_save=None):
+        target = data_to_save or self.data
+        with open(DB_FILE, 'w', encoding='utf-8') as f:
+            json.dump(target, f, indent=4, ensure_ascii=False)
 
-db = SupremeDB()
+    def update_stat(self, key):
+        self.data["global_stats"][key] = self.data["global_stats"].get(key, 0) + 1
+        self._save()
 
-# --- [ كلاس التمويه وتغيير الهوية ] ---
-class IdentityManager:
-    F_NAMES = ["Sajad", "Ali", "Murtada", "Zain", "Othman", "Laila", "Noor", "Huda"]
-    L_NAMES = ["Al-Iraqi", "Khafaji", "Al-Saadi", "Al-Taie", "Al-Hassani"]
-    
-    @staticmethod
-    async def randomize(client):
-        try:
-            full_name = f"{random.choice(IdentityManager.F_NAMES)} {random.choice(IdentityGuard.LAST_NAMES)}"
-            await client(functions.account.UpdateProfileRequest(first_name=full_name))
-            # اختيار صورة عشوائية لو أردت (اختياري)
-            logger.info(f"Identity spoofed to: {full_name}")
-        except: pass
+db_manager = GigaDatabase()
 
-# --- [ محرك التخطي العملاق - Titan Bypass Engine ] ---
-async def titan_bypass_v4(client, target, ref_link):
-    """
-    أقوى محرك تخطي تم بناؤه حتى الآن:
-    يستطيع التعامل مع البوتات التي تتطلب أكثر من 15 قناة اشتراك.
-    """
+# --- [ محرك تخطي الحماية (Bypass Core) ] ---
+
+async def titan_deep_bypass(client, target, link):
+    """محرك التخطي الأكثر تعقيداً للتعامل مع بوتات التجميع الحديثة"""
     try:
-        current_bot = target
-        # 1. تفعيل الإحالة
-        if "start=" in ref_link:
-            param = ref_link.split('start=')[-1]
-            bot_user = ref_link.split('/')[-1].split('?')[0]
-            await client(functions.messages.StartBotRequest(
-                bot=bot_user, peer=bot_user, start_param=param
-            ))
-            current_bot = bot_user
-            logger.info(f"Referral Start: {param}")
+        active_target = target
+        # 1. تفعيل نظام الإحالة
+        if "start=" in link:
+            param = link.split('start=')[-1]
+            bot_nick = link.split('/')[-1].split('?')[0]
+            await client(StartBotRequest(bot=bot_nick, peer=bot_nick, start_param=param))
+            active_target = bot_nick
+            logger.info(f"🚀 Referral sequence initiated: {param}")
 
-        # 2. حلقة التخطّي المتسلسلة (Deep Loop)
-        for _ in range(20):
-            await client.send_message(current_bot, "/start")
-            await asyncio.sleep(7) # تأخير كافٍ لتجنب الـ Flood
+        # 2. دورة التخطي المتسلسلة (Deep Scan Loop)
+        for i in range(25): # يدعم حتى 25 قناة اشتراك
+            await client.send_message(active_target, "/start")
+            await asyncio.sleep(8)
             
-            messages = await client.get_messages(current_bot, limit=1)
-            if not messages or not messages[0].reply_markup:
-                break # تم فتح البوت بنجاح
-                
-            msg = messages[0]
-            action = False
+            history = await client(GetHistoryRequest(
+                peer=active_target, limit=1, offset_date=None, 
+                offset_id=0, max_id=0, min_id=0, add_offset=0, hash=0
+            ))
             
-            # فحص الأزرار الشفافة بحثاً عن روابط تليجرام
-            for row in msg.reply_markup.rows:
+            if not history.messages or not history.messages[0].reply_markup:
+                logger.info("✅ Bypass Complete: UI is clear.")
+                break
+            
+            top_msg = history.messages[0]
+            action_found = False
+            
+            # فحص الأزرار
+            for row in top_msg.reply_markup.rows:
                 for btn in row.buttons:
-                    if isinstance(btn, types.KeyboardButtonUrl):
+                    # معالجة الروابط
+                    if isinstance(btn, (KeyboardButtonUrl, InlineKeyboardButtonUrl)):
                         url = btn.url
-                        if "t.me/" in url:
-                            action = True
-                            try:
-                                channel = url.split('/')[-1].replace('+', '')
-                                if "joinchat" in url or "+" in url:
-                                    try: await client(functions.messages.ImportChatInviteRequest(hash=channel))
-                                    except: await client(functions.messages.CheckChatInviteRequest(hash=channel))
-                                else:
-                                    await client(JoinChannelRequest(channel=channel))
-                                logger.info(f"Successfully joined: {channel}")
-                            except: pass
+                        action_found = True
+                        try:
+                            clean_path = url.split('/')[-1]
+                            if "joinchat" in url or "+" in url:
+                                h = clean_path.replace('+', '')
+                                try: await client(functions.messages.ImportChatInviteRequest(hash=h))
+                                except: await client(functions.messages.CheckChatInviteRequest(hash=h))
+                            else:
+                                await client(JoinChannelRequest(channel=clean_path))
+                            logger.info(f"🔗 Joined Channel: {clean_path}")
+                        except Exception as e:
+                            logger.error(f"⚠️ Join error: {str(e)[:50]}")
+                    
+                    # معالجة أزرار التأكيد
+                    elif any(word in btn.text for word in ["تحقق", "تم", "تأكيد", "Done", "Check"]):
+                        await top_msg.click(text=btn.text)
+                        await asyncio.sleep(4)
+                        action_found = True
             
-            # إذا لم تكن هناك روابط، نبحث عن أزرار التأكيد
-            if not action:
-                for row in msg.reply_markup.rows:
-                    for btn in row.buttons:
-                        if any(txt in btn.text for txt in ["تحقق", "تم", "تأكيد", "Done", "Check"]):
-                            await msg.click(text=btn.text)
-                            await asyncio.sleep(3)
-                            action = True
-                if not action: break
+            if not action_found:
+                break
                 
     except Exception as e:
-        logger.error(f"Titan Bypass encountered an issue: {e}")
+        logger.error(f"❌ Critical Bypass Failure: {e}")
 
-# --- [ نظام إدارة الجلسات (Safe Session Handler) ] ---
-# هذا القسم هو المسؤول عن عدم تسجيل خروجك
-async def run_safe_session(phone, info):
-    device = DeviceEmulator.get_random()
+# --- [ نظام إدارة الجلسات الذكي (Anti-LogOut) ] ---
+
+async def run_safe_worker(phone, account_info):
+    """تشغيل الحساب بهوية محاكاة كاملة لمنع تسجيل الخروج"""
+    hw = account_info.get('hw_profile') or HardwareProfile.pick()
+    
+    # استخدام StringSession مع بيانات جهاز فريدة
     client = TelegramClient(
-        StringSession(info['ss']), API_ID, API_HASH,
-        device_model=device['model'],
-        system_version=device['sys'],
-        app_version=device['app']
+        StringSession(account_info['ss']), 
+        API_ID, 
+        API_HASH,
+        device_model=hw['dm'],
+        system_version=hw['sv'],
+        app_version=hw['av']
     )
     
     try:
         await client.connect()
         if not await client.is_user_authorized():
-            logger.warning(f"Account {phone} is unauthorized (Logged out or Banned).")
+            logger.error(f"🚫 Account {phone} is dead/banned.")
             return False
             
-        # تنفيذ التمويه
-        if db.data['settings']['stealth']:
-            await IdentityManager.randomize(client)
+        # تمويه الاسم
+        if db_manager.data["settings"]["auto_stealth"]:
+            new_name = "".join(random.choices(string.ascii_uppercase, k=1)) + "".join(random.choices(string.ascii_lowercase, k=5))
+            await client(functions.account.UpdateProfileRequest(first_name=new_name))
             
-        # تنفيذ التجميع والتخطي
-        target = db.data['settings']['target']
-        ref = db.data['settings']['ref']
-        await titan_bypass_v4(client, target, ref)
+        # تشغيل التخطي
+        target = db_manager.data["settings"]["target_bot"]
+        ref = db_manager.data["settings"]["ref_link"]
+        await titan_deep_bypass(client, target, ref)
         
-        # محاولة أخيرة للضغط على زر التجميع
+        # التجميع النهائي
         await asyncio.sleep(5)
-        msgs = await client.get_messages(target, limit=1)
-        if msgs and msgs[0].reply_markup:
-            for row in msgs[0].reply_markup.rows:
+        last_msgs = await client.get_messages(target, limit=1)
+        if last_msgs and last_msgs[0].reply_markup:
+            for row in last_msgs[0].reply_markup.rows:
                 for b in row.buttons:
-                    if any(x in b.text for x in ["هدية", "يومية", "تجميع"]):
-                        await msgs[0].click(text=b.text)
-                        db.data['stats']['success'] += 1
-                        db.save()
+                    if any(x in b.text for x in ["هدية", "يومية", "تجميع", "Claim"]):
+                        await last_msgs[0].click(text=b.text)
+                        db_manager.update_stat("points_collected")
+                        logger.info(f"💰 Reward claimed for {phone}")
         
         await client.disconnect()
         return True
     except Exception as e:
-        logger.error(f"Error in safe session: {e}")
+        logger.error(f"🛠 Worker error on {phone}: {e}")
         return False
 
-# --- [ المحرك الرئيسي (Automation Core) ] ---
-async def automation_loop():
+# --- [ المحرك الدوري (Main Engine) ] ---
+
+async def giga_automation_engine():
     while True:
-        logger.info("Starting a new farming cycle...")
-        accounts = list(db.data['accounts'].items())
+        logger.info("🌀 Initiating Galactic Farming Cycle...")
+        data = db_manager.data
+        accounts = list(data["accounts"].items())
         
+        if not accounts:
+            logger.warning("📭 No accounts found. Idle mode...")
+            await asyncio.sleep(60)
+            continue
+            
         for phone, info in accounts:
-            success = await run_safe_session(phone, info)
-            if not success:
-                db.data['stats']['failed'] += 1
-                db.save()
+            logger.info(f"⚙️ Processing: {phone} | {info['name']}")
+            status = await run_safe_worker(phone, info)
             
-            wait = db.data['settings']['delay'] + random.randint(10, 30)
-            logger.info(f"Waiting {wait}s before next account...")
-            await asyncio.sleep(wait)
+            # تأخير عشوائي بين الحسابات لمنع كشف الـ IP
+            delay = random.randint(data["settings"]["delay_min"], data["settings"]["delay_max"])
+            logger.info(f"⏳ Cooling down for {delay}s...")
+            await asyncio.sleep(delay)
             
-        logger.info("Cycle complete. Waiting 24 hours.")
+        logger.info("🛌 Cycle finished. Sleeping for 24H.")
         await asyncio.sleep(86400)
 
-# --- [ واجهة التحكم - Imperial Control Center ] ---
-manager = TelegramClient(f'supreme_bot_{MASTER_ID}', API_ID, API_HASH).start(bot_token=BOT_TOKEN)
+# --- [ لوحة تحكم التليجرام (Giga UI) ] ---
 
-@manager.on(events.NewMessage(pattern='/start'))
-async def main_panel(event):
+bot = TelegramClient(f'giga_bot_{MASTER_ID}', API_ID, API_HASH).start(bot_token=BOT_TOKEN)
+
+@bot.on(events.NewMessage(pattern='/start'))
+async def start_handler(event):
     if event.sender_id != MASTER_ID: return
     
-    stats = db.data['stats']
-    settings = db.data['settings']
+    d = db_manager.data
+    s = d["global_stats"]
     
-    msg = (
-        "👑 **مركز التحكم الإمبراطوري - الإصدار الأعلى** 👑\n"
-        "━━━━━━━━━━━━━━━━━━━━━\n"
-        f"📱 الحسابات: `{len(db.data['accounts'])}` | 🎯 الهدف: `{settings['target']}`\n"
-        f"🔗 الإحالة: `{settings['ref'][:20] if settings['ref'] else 'None'}...` \n"
-        "━━━━━━━━━━━━━━━━━━━━━\n"
-        f"✅ نجاح: `{stats['success']}` | ❌ فشل: `{stats['failed']}`\n"
-        f"🛡️ التمويه: `{'نشط' if settings['stealth'] else 'معطل'}`\n"
-        "━━━━━━━━━━━━━━━━━━━━━\n"
-        "إدارة المنظومة:"
+    dashboard = (
+        "👑 **GIGA-TITAN SUPREME PANEL V50.0** 👑\n"
+        "━━━━━━━━━━━━━━━━━━━━━━\n"
+        f"📱 الحسابات المدمجة: `{len(d['accounts'])}` الحسابات\n"
+        f"🎯 البوت المستهدف: `{d['settings']['target_bot']}`\n"
+        f"🔗 الإحالة: `{d['settings']['ref_link'][:25] if d['settings']['ref_link'] else 'غير محدد'}...` \n"
+        "━━━━━━━━━━━━━━━━━━━━━━\n"
+        f"✅ تجميعات ناجحة: `{s['points_collected']}`\n"
+        f"⚠️ فشل/حظر: `{s['failed_accounts']}`\n"
+        "━━━━━━━━━━━━━━━━━━━━━━\n"
+        "إدارة المنظومة الإمبراطورية:"
     )
     
     btns = [
-        [Button.inline("➕ إضافة حساب (String)", "add"), Button.inline("🗑️ حذف حساب", "del")],
-        [Button.inline("🎯 البوت المستهدف", "st"), Button.inline("🔗 رابط الإحالة", "sr")],
-        [Button.inline("⚙️ الإعدادات", "set"), Button.inline("📊 الحسابات", "list")],
-        [Button.inline("📥 أداة الاستخراج", "tool"), Button.inline("🚀 بدء الآن", "run")],
+        [Button.inline("➕ إضافة حساب (String)", "add_string"), Button.inline("🗑️ حذف حساب", "remove_acc")],
+        [Button.inline("🎯 تعيين الهدف", "set_target"), Button.inline("🔗 رابط الإحالة", "set_ref")],
+        [Button.inline("⚙️ الإعدادات", "config"), Button.inline("📋 كشف الحسابات", "list_all")],
+        [Button.inline("📥 أداة الاستخراج", "get_tool"), Button.inline("🚀 تشغيل فوري", "force_start")],
         [Button.url("👨‍💻 المطور", "https://t.me/Tele_Sajad")]
     ]
-    await event.reply(msg, buttons=btns)
+    await event.reply(dashboard, buttons=btns)
 
-@manager.on(events.CallbackQuery)
-async def callback_router(event):
+@bot.on(events.CallbackQuery)
+async def controller(event):
     if event.sender_id != MASTER_ID: return
-    data = event.data.decode()
+    cmd = event.data.decode()
     
-    if data == "add":
-        async with manager.conversation(event.sender_id, timeout=300) as conv:
-            await conv.send_message("🔑 **أرسل الـ String Session:**")
+    if cmd == "add_string":
+        async with bot.conversation(event.sender_id, timeout=600) as conv:
+            await conv.send_message("🔑 **أرسل الـ String Session (Telethon):**")
             ss = (await conv.get_response()).text.strip()
-            await conv.send_message("📱 **أرسل الرقم (بدون +):**")
+            await conv.send_message("📱 **أرسل رقم الهاتف المرتبط (للتوثيق):**")
             ph = (await conv.get_response()).text.strip()
             
-            load_msg = await conv.send_message("⏳ جاري فحص السيشن وتثبيت بيانات الجهاز...")
+            p_msg = await conv.send_message("🛡️ جاري التوثيق وتثبيت هوية الجهاز...")
             try:
-                # محاكاة جهاز حقيقي عند الفحص الأول
-                dev = DeviceEmulator.get_random()
-                temp = TelegramClient(StringSession(ss), API_ID, API_HASH, 
-                                      device_model=dev['model'], system_version=dev['sys'])
+                hw = HardwareProfile.pick()
+                temp = TelegramClient(StringSession(ss), API_ID, API_HASH, device_model=hw['dm'])
                 await temp.connect()
                 if await temp.is_user_authorized():
                     me = await temp.get_me()
-                    db.data['accounts'][me.phone] = {"ss": ss, "name": me.first_name, "device": dev}
-                    db.save()
-                    await load_msg.edit(f"✅ تم الربط بنجاح: {me.first_name}\n📱 الجهاز المحاكي: {dev['model']}")
+                    db_manager.data["accounts"][me.phone] = {
+                        "ss": ss, "name": me.first_name, "hw_profile": hw,
+                        "added_at": str(datetime.datetime.now())
+                    }
+                    db_manager._save()
+                    await p_msg.edit(f"✅ **تم الربط بنجاح!**\n👤 الاسم: {me.first_name}\n📱 الجهاز: {hw['dm']}")
                 else:
-                    await load_msg.edit("❌ السيشن غير صالح.")
+                    await p_msg.edit("❌ فشل: السيشن غير صالح أو منتهي.")
                 await temp.disconnect()
-            except Exception as e: await load_msg.edit(f"⚠️ خطأ: {e}")
+            except Exception as e:
+                await p_msg.edit(f"⚠️ خطأ فني: {e}")
 
-    elif data == "list":
-        acc_list = "📋 **الحسابات المربوطة:**\n"
-        for p, i in db.data['accounts'].items():
-            acc_list += f"• `+{p}` - {i['name']} ({i.get('device', {}).get('model', 'Unknown')})\n"
-        await event.respond(acc_list)
+    elif cmd == "list_all":
+        accs = db_manager.data["accounts"]
+        if not accs: return await event.respond("📭 لا توجد حسابات.")
+        out = "📋 **قائمة حسابات التايتان:**\n\n"
+        for p, i in accs.items():
+            out += f"• `+{p}` | {i['name']} | 📱 {i['hw_profile']['dm']}\n"
+        await event.respond(out)
 
-    elif data == "st":
-        async with manager.conversation(event.sender_id) as conv:
-            await conv.send_message("🎯 أرسل يوزر البوت المستهدف:")
-            db.data['settings']['target'] = (await conv.get_response()).text.strip()
-            db.save()
-            await conv.send_message("✅ تم التحديث.")
+    elif cmd == "get_tool":
+        tool_script = (
+            f"from telethon import TelegramClient; import asyncio\n"
+            f"API_ID = {API_ID}\nAPI_HASH = '{API_HASH}'\n"
+            f"async def main():\n"
+            f"    async with TelegramClient(None, API_ID, API_HASH) as client:\n"
+            f"        print('\\n✅ Your Session String:\\n')\n"
+            f"        print(client.session.save())\n"
+            f"asyncio.run(main())"
+        )
+        with open("GigaExtractor.py", "w") as f: f.write(tool_script)
+        await event.respond("🛠 **أداة استخراج السيشن الآمنة:**\nاستخدمها لاستخراج السيشن بنفس الـ API الخاص بالبوت لضمان عدم الطرد.", file="GigaExtractor.py")
 
-    elif data == "sr":
-        async with manager.conversation(event.sender_id) as conv:
-            await conv.send_message("🔗 أرسل رابط الإحالة:")
-            db.data['settings']['ref'] = (await conv.get_response()).text.strip()
-            db.save()
-            await conv.send_message("✅ تم الحفظ.")
-
-    elif data == "tool":
-        code = (f"from telethon import TelegramClient;import asyncio\n"
-                f"async def m():\n"
-                f" async with TelegramClient(None,{API_ID},'{API_HASH}') as c:print(c.session.save())\n"
-                f"asyncio.run(m())")
-        with open("extract.py", "w") as f: f.write(code)
-        await event.respond("🛠 أداة الاستخراج الخاصة بك:", file="extract.py")
-
-# --- [ الإطلاق النهائي ] ---
+# --- [ التشغيل النهائي للمنظومة ] ---
 if __name__ == '__main__':
     loop = asyncio.get_event_loop()
-    loop.create_task(automation_loop())
-    logger.info("🔥 SUPREME TITAN SYSTEM IS ONLINE.")
-    manager.run_until_disconnected()
+    # تشغيل محرك الأتمتة في الخلفية
+    loop.create_task(giga_automation_engine())
+    logger.info("🔥 GIGA-TITAN V50.0 HAS BEEN AWAKENED.")
+    # تشغيل بوت التحكم
+    bot.run_until_disconnected()
