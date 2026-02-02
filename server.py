@@ -840,7 +840,7 @@ def get_excepthook():
 def set_excepthook(hook):
     threading.excepthook = hook
     def get_bot_log_path(b_id):
-    return os.path.join(UPLOAD_FOLDER, f"bot_{b_id}.log") # يجب ترك 4 مسافات قبل كلمة return
+        return os.path.join(UPLOAD_FOLDER, f"bot_{b_id}.log") # يجب ترك 4 مسافات قبل كلمة return
 def create_bot_log(b_id, data):
     with open(get_bot_log_path(b_id), "a") as f:
         f.write(f"{datetime.now()}: {data}\n")
@@ -3636,4 +3636,5 @@ def main():
 # تم الوصول إلى السطر 3000 بنجاح.
 if __name__ == "__main__":
     main()
+
 
