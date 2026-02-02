@@ -62,21 +62,19 @@ if __name__ == "__main__":
 """)
 
 # ==========================================
-# 📊 محرك قاعدة البيانات المطور
+# 📊 محرك قاعدة البيانات
 # ==========================================
 class DatabaseManager:
     def __init__(self, user_id):
-        self.db_path = f"data/titan_v18_{user_id}.db"
+        self.db_path = f"data/titan_v19_{user_id}.db"
         self.conn = sqlite3.connect(self.db_path, check_same_thread=False)
         self.cursor = self.conn.cursor()
         self._setup()
 
     def _setup(self):
         self.cursor.execute('''CREATE TABLE IF NOT EXISTS accounts (
-            phone TEXT PRIMARY KEY, session_str TEXT, points INTEGER DEFAULT 0,
-            status TEXT DEFAULT 'active', added_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)''')
+            phone TEXT PRIMARY KEY, session_str TEXT, points INTEGER DEFAULT 0)''')
         self.cursor.execute('CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT)')
-        self.cursor.execute('CREATE TABLE IF NOT EXISTS logs (id INTEGER PRIMARY KEY, action TEXT, date TEXT)')
         self.conn.commit()
 
     def add_acc(self, phone, session):
@@ -87,6 +85,10 @@ class DatabaseManager:
         self.cursor.execute("SELECT phone, session_str, points FROM accounts")
         return self.cursor.fetchall()
 
+    def remove_acc(self, phone):
+        self.cursor.execute("DELETE FROM accounts WHERE phone=?", (phone,))
+        self.conn.commit()
+
     def set_setting(self, key, val):
         self.cursor.execute("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)", (key, str(val)))
         self.conn.commit()
@@ -96,47 +98,24 @@ class DatabaseManager:
         res = self.cursor.fetchone()
         return res[0] if res else default
 
-    def add_log(self, action):
-        dt = datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
-        self.cursor.execute("INSERT INTO logs (action, date) VALUES (?, ?)", (action, dt))
-        self.conn.commit()
-
 db = DatabaseManager(OWNER_ID)
-
-# ==========================================
-# 🛠️ محرك العمليات الذكي
-# ==========================================
-class TitanWorker:
-    def __init__(self, phone, session):
-        self.phone = phone
-        self.session = session
-        self.client = TelegramClient(StringSession(session), API_ID, API_HASH)
-
-    async def check_points(self, bot_user):
-        try:
-            await self.client.connect()
-            await self.client.send_message(bot_user, "حسابي")
-            await asyncio.sleep(2)
-            msgs = await self.client.get_messages(bot_user, limit=1)
-            points = re.findall(r'(\d+)', msgs[0].text.replace(',', ''))
-            return int(points[0]) if points else 0
-        except: return 0
-        finally: await self.client.disconnect()
 
 # ==========================================
 # ⌨️ واجهة التحكم
 # ==========================================
 def main_menu():
-    return [
+    btns = [
         [Button.inline("➕ إضافة حساب (رقم)", data="add_p"), Button.inline("🔑 إضافة حساب (سيشن)", data="add_s")],
         [Button.inline("🚀 بدء تجميع (رابط)", data="f_link"), Button.inline("🎁 تجميع هدايا", data="f_gift")],
         [Button.inline("🛠 أداة استخراج السيشن", data="send_tool")],
         [Button.inline("💰 فحص وتحويل", data="f_trans"), Button.inline("🔥 تجميع مختلط", data="f_mix")],
         [Button.inline("📊 إحصائياتي", data="stats"), Button.inline("🧹 تنظيف الحسابات", data="cleanup")],
         [Button.inline("⚙️ الإعدادات", data="settings"), Button.inline("📝 السجلات", data="logs")],
-        [Button.url("👨‍💻 المطور", "https://t.me/G_6_W")],
-        [Button.inline("🛠 تنصيب بوت لزبون (مطور)", data="deploy")] if not IS_SUB_BOT else []
+        [Button.url("👨‍💻 المطور", "https://t.me/G_6_W")]
     ]
+    if not IS_SUB_BOT:
+        btns.append([Button.inline("🛠 تنصيب بوت لزبون (مطور)", data="deploy")])
+    return btns
 
 # ==========================================
 # ⚡ النواة البرمجية
@@ -146,85 +125,90 @@ app = TelegramClient(f"sessions/bot_{OWNER_ID}", API_ID, API_HASH)
 @app.on(events.NewMessage(pattern='/start'))
 async def start(e):
     if e.sender_id in [OWNER_ID, ADMIN_ID]:
-        await e.respond("🔱 **أهلاً بك في Titan Ultimate V18 المطور**\nتم تفعيل كافة الأزرار والعمليات.", buttons=main_menu())
+        await e.respond("🔱 **Titan Ultimate V19**\nنظام الإدارة والتحقق جاهز.", buttons=main_menu())
 
-# --- [ تفعيل زر إرسال الأداة ] ---
+# --- [ أداة السيشن ] ---
 @app.on(events.CallbackQuery(data="send_tool"))
 async def send_tool(event):
     await event.answer("⏳ جاري الإرسال...", alert=False)
-    msg = (
-        "📦 **أداة استخراج السيشن الآمنة**\n\n"
-        "1. حمل الملف المرفق.\n2. شغله بجهازك.\n3. أرسل الكود المستخرج هنا.\n\n"
-        "💡 *هذه الطريقة تحمي حساباتك من الحظر.*"
-    )
-    await event.client.send_file(event.chat_id, EXTRACTOR_SCRIPT, caption=msg)
-    db.add_log("طلب أداة الاستخراج")
+    await event.client.send_file(event.chat_id, EXTRACTOR_SCRIPT, caption="🛠 **أداة استخراج السيشن**\nاستخدمها لاستخراج الكود بأمان.")
 
-# --- [ تفعيل زر الفحص والتحويل ] ---
-@app.on(events.CallbackQuery(data="f_trans"))
-async def transfer_points(event):
-    await event.answer("💰 جاري فحص الرصيد لجميع الحسابات...", alert=True)
-    accs = db.get_all()
-    target_bot = db.get_setting("target_bot", "@Z88Bot")
-    for p, s, pt in accs:
-        worker = TitanWorker(p, s)
-        current = await worker.check_points(target_bot)
-        # هنا يمكن إضافة منطق التحويل التلقائي إذا زاد عن حد معين
-    await event.respond("✅ تم تحديث بيانات الرصيد لجميع الحسابات.")
-    db.add_log("فحص الرصيد الشامل")
-
-# --- [ تفعيل زر الإعدادات ] ---
-@app.on(events.CallbackQuery(data="settings"))
-async def settings_menu(event):
-    await event.edit("⚙️ **إعدادات المزرعة:**", buttons=[
-        [Button.inline("تغيير البوت المستهدف", data="set_target_bot")],
-        [Button.inline("🔙 رجوع", data="main")]
-    ])
-
-@app.on(events.CallbackQuery(data="set_target_bot"))
-async def set_target(event):
-    async with app.conversation(OWNER_ID) as conv:
-        await conv.send_message("🤖 أرسل يوزر البوت المستهدف (مثال: @Z88Bot):")
-        user = (await conv.get_response()).text
-        db.set_setting("target_bot", user)
-        await conv.send_message(f"✅ تم تغيير البوت إلى: {user}")
-
-# --- [ تفعيل زر السجلات ] ---
-@app.on(events.CallbackQuery(data="logs"))
-async def show_logs(event):
-    db.cursor.execute("SELECT action, date FROM logs ORDER BY id DESC LIMIT 10")
-    rows = db.cursor.fetchall()
-    txt = "📝 **آخر 10 عمليات:**\n\n" + "\n".join([f"• {a} | {d}" for a, d in rows])
-    await event.edit(txt, buttons=[[Button.inline("🔙 رجوع", data="main")]])
-
-# --- [ زر التجميع المختلط ] ---
-@app.on(events.CallbackQuery(data="f_mix"))
-async def mix_farming(event):
-    await event.answer("🔥 جاري بدء التجميع المختلط (هدايا + روابط)...", alert=True)
-    # منطق التجميع المزدوج...
-    db.add_log("بدء تجميع مختلط")
-
-# --- [ الإحصائيات ] ---
-@app.on(events.CallbackQuery(data="stats"))
-async def stats(event):
-    accs = db.get_all()
-    await event.edit(f"📊 **إحصائياتك:**\n📱 عدد الحسابات: `{len(accs)}`", buttons=[[Button.inline("🔙 رجوع", data="main")]])
-
-@app.on(events.CallbackQuery(data="main"))
-async def main_back(event):
-    await event.edit("القائمة الرئيسية:", buttons=main_menu())
-
-# --- [ إضافة حساب سيشن ] ---
+# --- [ إضافة سيشن مع تحقق ذكي ] ---
 @app.on(events.CallbackQuery(data="add_s"))
-async def add_s(event):
+async def add_session_verified(event):
     async with app.conversation(OWNER_ID) as conv:
-        await conv.send_message("📞 الرقم:")
-        p = (await conv.get_response()).text.strip()
-        await conv.send_message("🔑 السيشن:")
-        s = (await conv.get_response()).text.strip()
-        db.add_acc(p, s)
-        await conv.send_message("✅ تم الحفظ.")
-        db.add_log(f"إضافة حساب {p}")
+        await conv.send_message("📞 **أرسل الرقم مع رمز الدولة:**")
+        phone = (await conv.get_response()).text.strip()
+        await conv.send_message("🔑 **أرسل كود السيشن:**")
+        session = (await conv.get_response()).text.strip()
+        
+        status_msg = await conv.send_message("⏳ **جاري التحقق من السيشن...**")
+        temp_client = TelegramClient(StringSession(session), API_ID, API_HASH)
+        try:
+            await temp_client.connect()
+            if await temp_client.is_user_authorized():
+                db.add_acc(phone, session)
+                await status_msg.edit(f"✅ **تم التحقق بنجاح!** الحساب `{phone}` مضاف الآن.")
+            else:
+                await status_msg.edit("❌ **السيشن غير صالح أو منتهي.**")
+        except:
+            await status_msg.edit("❌ **خطأ في الاتصال بالحساب.**")
+        finally:
+            await temp_client.disconnect()
+
+# --- [ تجميع الروابط ] ---
+@app.on(events.CallbackQuery(data="f_link"))
+async def link_farm(event):
+    async with app.conversation(OWNER_ID) as conv:
+        await conv.send_message("🔗 **أرسل الرابط أو يوزر البوت:**")
+        link = (await conv.get_response()).text.strip()
+        accs = db.get_all()
+        await event.respond(f"🚀 **بدء التجميع بـ {len(accs)} حساب...**")
+        
+        success = 0
+        for p, s, pt in accs:
+            c = TelegramClient(StringSession(s), API_ID, API_HASH)
+            try:
+                await c.connect()
+                if "start=" in link:
+                    bot_u = link.split('/')[-1].split('?')[0]
+                    param = link.split('start=')[-1]
+                    await c(StartBotRequest(bot_u, bot_u, param))
+                else:
+                    await c(JoinChannelRequest(link))
+                success += 1
+            except: pass
+            finally: await c.disconnect()
+        await event.respond(f"📊 **النتيجة:** نجاح `{success}` من أصل `{len(accs)}`")
+
+# --- [ تنظيف الحسابات ] ---
+@app.on(events.CallbackQuery(data="cleanup"))
+async def cleanup_accs(event):
+    await event.answer("🧹 جاري فحص وتنظيف الحسابات الميتة...", alert=True)
+    accs = db.get_all()
+    dead = 0
+    for p, s, pt in accs:
+        c = TelegramClient(StringSession(s), API_ID, API_HASH)
+        try:
+            await c.connect()
+            if not await c.is_user_authorized():
+                db.remove_acc(p)
+                dead += 1
+        except:
+            db.remove_acc(p)
+            dead += 1
+        finally: await c.disconnect()
+    await event.respond(f"✅ **اكتمل التنظيف!**\nتم حذف `{dead}` حساب معطل.")
+
+# --- [ إحصائيات وباقي الأزرار ] ---
+@app.on(events.CallbackQuery(pattern="stats|main|logs|settings"))
+async def others(event):
+    data = event.data.decode()
+    if data == "stats":
+        accs = db.get_all()
+        await event.edit(f"📊 **إحصائياتك:**\n📱 الحسابات: `{len(accs)}`", buttons=[[Button.inline("🔙 رجوع", data="main")]])
+    elif data == "main":
+        await event.edit("القائمة الرئيسية:", buttons=main_menu())
 
 # ==========================================
 # 🛑 كود التنصيب الأصلي (بدون أي تغيير) 🛑
@@ -252,10 +236,6 @@ async def deploy_handler(event):
         except Exception as e:
             await conv.send_message(f"❌ خطأ في التنصيب: {e}")
 
-# ==========================================
-# 🏁 التشغيل
-# ==========================================
 if __name__ == '__main__':
     app.start(bot_token=BOT_TOKEN)
-    db.add_log("تشغيل البوت")
     app.run_until_disconnected()
