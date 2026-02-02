@@ -1,247 +1,222 @@
-# -*- coding: utf-8 -*-
-"""
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-👑 THE IMPERIAL SESSION FACTORY - ULTIMATE BYPASS V25.0
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-نظام متكامل يدعم:
-1. روابط الإحالة (Referral) وحساب النقاط تلقائياً.
-2. تخطي الاشتراك الإجباري عبر إرسال /start المتكرر.
-3. إرسال طلبات الانضمام للقنوات الخاصة (Request Join).
-4. فحص تطابق السيشن والرقم لضمان الأمان.
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-"""
-
-import os
-import re
-import sys
-import json
-import time
-import asyncio
-import logging
-import datetime
-import subprocess
-import platform
-import random
-from telethon import TelegramClient, events, Button, functions, types
+import os, asyncio, json, datetime, re, sys, subprocess, time
+from telethon import TelegramClient, events, Button
 from telethon.sessions import StringSession
-from telethon.errors import *
-
-# --- [ إعدادات السجلات ] ---
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - [%(levelname)s] - %(message)s',
-    handlers=[logging.FileHandler("imperial_core.log"), logging.StreamHandler()]
+from telethon.errors import (
+    SessionPasswordNeededError, 
+    PhoneCodeInvalidError, 
+    PasswordHashInvalidError, 
+    PhoneNumberInvalidError,
+    FloodWaitError
 )
-logger = logging.getLogger("ImperialSystem")
+from telethon.tl.functions.channels import JoinChannelRequest
+from telethon.tl.functions.messages import StartBotRequest
 
-# --- [ الثوابت ] ---
+# --- [ الإعدادات الأساسية ] ---
 API_ID = 39719802 
 API_HASH = '032a5697fcb9f3beeab8005d6601bde9'
 
+# التحقق من نوع التشغيل (مالك أم زبون)
 if len(sys.argv) > 2:
-    BOT_TOKEN = sys.argv[1]
-    MASTER_ID = int(sys.argv[2])
-    SUB_MODE = True
+    CURRENT_TOKEN = sys.argv[1]
+    CURRENT_MASTER = int(sys.argv[2])
+    IS_SUB_BOT = True
 else:
-    MASTER_ID = 8504553407  
-    BOT_TOKEN = '8206330079:AAEZ3T1-hgq_VhEG3F8ElGEQb9D14gCk0eY'
-    SUB_MODE = False
+    CURRENT_MASTER = 8504553407  
+    CURRENT_TOKEN = '8206330079:AAEZ3T1-hgq_VhEG3F8ElGEQb9D14gCk0eY'
+    IS_SUB_BOT = False
 
-DB_ACCS = f'imp_accounts_{MASTER_ID}.json'
+ACCS_FILE = f'accs_{CURRENT_MASTER}.json'
+CONFIG_FILE = f'config_{CURRENT_MASTER}.json'
 
-# --- [ نظام إدارة البيانات ] ---
-class Database:
-    @staticmethod
-    def load():
-        if not os.path.exists(DB_ACCS):
-            with open(DB_ACCS, 'w', encoding='utf-8') as f:
-                json.dump({"accounts": {}, "settings": {"target": "@t06bot", "invite_link": ""}}, f)
-        return json.load(open(DB_ACCS, 'r', encoding='utf-8'))
-
-    @staticmethod
-    def save(data):
-        with open(DB_ACCS, 'w', encoding='utf-8') as f:
-            json.dump(data, f, indent=4, ensure_ascii=False)
-
-# --- [ محرك تخطي الاشتراك والإحالات الذكي ] ---
-
-async def smart_referral_bypass(client, link, target_bot):
-    """
-    الدالة الجوهرية:
-    1. تحليل الرابط (هل هو إحالة أم قناة؟).
-    2. تنفيذ الإحالة أو الانضمام.
-    3. تخطي الاشتراك الإجباري المتسلسل داخل البوت.
-    """
+# --- [ إدارة قاعدة البيانات ] ---
+def load_db(file):
     try:
-        # --- الخطوة 1: معالجة رابط الإحالة ---
-        if "start=" in link:
-            # استخراج الكود مثل: 0005n78vig
-            start_param = link.split('start=')[-1]
-            # استخراج يوزر البوت من الرابط
-            bot_user = link.split('/')[-1].split('?')[0]
-            
-            # إرسال طلب البدء الرسمي (Referral Start)
-            await client(functions.messages.StartBotRequest(
-                bot=bot_user,
-                peer=bot_user,
-                start_param=start_param
-            ))
-            logger.info(f"✅ تم إرسال الإحالة بالكود: {start_param}")
-            target_bot = bot_user # تحديث الهدف ليكون البوت الذي في رابط الإحالة
-        
-        # --- الخطوة 2: الانضمام للقنوات (سواء كانت في الرابط أو اشتراك إجباري) ---
-        elif "t.me/" in link:
-            path = link.split('/')[-1]
-            try:
-                if path.startswith('+') or "joinchat" in link:
-                    h = path.replace('+', '') if path.startswith('+') else link.split('/')[-1]
-                    await client(functions.messages.ImportChatInviteRequest(hash=h))
-                else:
-                    await client(functions.channels.JoinChannelRequest(channel=path))
-            except Exception:
-                # إذا كانت قناة بطلب انضمام (Request)
-                h = link.split('/')[-1].replace('+', '')
-                await client(functions.messages.CheckChatInviteRequest(hash=h))
-
-        # --- الخطوة 3: تخطي الاشتراك الإجباري المتسلسل داخل البوت ---
-        for i in range(7): # محاولة تخطي حتى 7 قنوات إجبارية
-            await client.send_message(target_bot, "/start")
-            await asyncio.sleep(4)
-            
-            msgs = await client.get_messages(target_bot, limit=1)
-            if not msgs or not msgs[0].reply_markup:
-                break # البوت فتح ولا توجد أزرار اشتراك
-                
-            found_join_btn = False
-            for row in msgs[0].reply_markup.rows:
-                for btn in row.buttons:
-                    if isinstance(btn, types.KeyboardButtonUrl):
-                        # انضمام للقناة الموجودة في الزر
-                        url = btn.url
-                        found_join_btn = True
-                        try:
-                            if "t.me/+" in url or "joinchat" in url:
-                                h = url.split('/')[-1].replace('+', '')
-                                try: await client(functions.messages.ImportChatInviteRequest(hash=h))
-                                except: await client(functions.messages.CheckChatInviteRequest(hash=h))
-                            else:
-                                await client(functions.channels.JoinChannelRequest(channel=url.split('/')[-1]))
-                        except: pass
-            
-            if not found_join_btn:
-                # إذا لم نجد روابط، ربما يوجد زر "تحقق"
-                for row in msgs[0].reply_markup.rows:
-                    for btn in row.buttons:
-                        if any(x in btn.text for x in ["تحقق", "تم", "تاكيد"]):
-                            await msgs[0].click(text=btn.text)
-                            await asyncio.sleep(2)
-                break
-                
+        if os.path.exists(file):
+            with open(file, 'r', encoding='utf-8') as f:
+                return json.load(f)
     except Exception as e:
-        logger.error(f"Error in smart bypass: {e}")
+        print(f"Error loading {file}: {e}")
+    return {}
 
-# --- [ محرك الأتمتة الرئيسي ] ---
+def save_db(file, data):
+    try:
+        with open(file, 'w', encoding='utf-8') as f:
+            json.dump(data, f, ensure_ascii=False, indent=4)
+    except Exception as e:
+        print(f"Error saving {file}: {e}")
 
-async def farming_cycle():
+# --- [ وظيفة تخطي الاشتراك الإجباري ] ---
+async def join_required_channels(client, bot_username):
+    try:
+        msg = await client.get_messages(bot_username, limit=1)
+        if msg[0].reply_markup:
+            for row in msg[0].reply_markup.rows:
+                for button in row.buttons:
+                    if button.url:
+                        channel_username = button.url.split('/')[-1]
+                        try:
+                            await client(JoinChannelRequest(channel_username))
+                            await asyncio.sleep(1)
+                        except:
+                            pass
+    except Exception:
+        pass
+
+# --- [ دالة التجميع اليومي والهدية ] ---
+async def gift_worker():
+    print("🚀 تم تشغيل ماكينة التجميع التلقائي...")
     while True:
-        db_data = Database.load()
-        accs = db_data.get("accounts", {})
-        target = db_data["settings"].get("target", "@t06bot")
-        invite = db_data["settings"].get("invite_link", "")
-        
-        for phone, info in accs.items():
-            try:
-                async with TelegramClient(StringSession(info['ss']), API_ID, API_HASH) as client:
-                    # تنفيذ نظام الإحالة والتخطي
-                    await smart_referral_bypass(client, invite if invite else target, target)
+        db = load_db(ACCS_FILE)
+        uid_str = str(CURRENT_MASTER)
+        if uid_str in db:
+            accounts = db[uid_str].get('accounts', {})
+            target = db[uid_str].get('target_bot', '@t06bot')
+            
+            for phone, info in accounts.items():
+                try:
+                    client = TelegramClient(StringSession(info['ss']), API_ID, API_HASH)
+                    await client.connect()
+                    if not await client.is_user_authorized():
+                        print(f"❌ حساب محظور أو جلسة منتهية: {phone}")
+                        continue
+                        
+                    await client.send_message(target, "/start")
+                    await asyncio.sleep(5)
                     
-                    # محاولة تجميع الهدية بعد التخطي
-                    await asyncio.sleep(3)
-                    msgs = await client.get_messages(target, limit=1)
-                    if msgs and msgs[0].reply_markup:
-                        for row in msgs[0].reply_markup.rows:
-                            for b in row.buttons:
-                                if any(w in b.text for w in ["هدية", "يومية", "تجميع"]):
-                                    await msgs[0].click(text=b.text)
-                await asyncio.sleep(random.randint(20, 50))
-            except: continue
-        await asyncio.sleep(86400)
+                    # محاولة الضغط على أزرار التجميع
+                    history = await client.get_messages(target, limit=1)
+                    if history[0].reply_markup:
+                        for row in history[0].reply_markup.rows:
+                            for btn in row.buttons:
+                                if any(x in btn.text for x in ["هدية", "يومية", "تجميع", "الرصيد"]):
+                                    await history[0].click(text=btn.text)
+                                    await asyncio.sleep(2)
+                    
+                    await client.disconnect()
+                    print(f"✅ تم التجميع بنجاح للحساب: {phone}")
+                except Exception as e:
+                    print(f"⚠️ خطأ في الحساب {phone}: {e}")
+                await asyncio.sleep(10) # انتظار بين حساب وحساب لتجنب الحظر
+                
+        await asyncio.sleep(24 * 3600) # كرر كل 24 ساعة
 
-# --- [ واجهة البوت ] ---
-
-bot = TelegramClient(f'bot_{MASTER_ID}', API_ID, API_HASH).start(bot_token=BOT_TOKEN)
+# --- [ البوت الرئيسي ] ---
+bot = TelegramClient(f'main_session_{CURRENT_MASTER}', API_ID, API_HASH).start(bot_token=CURRENT_TOKEN)
 
 @bot.on(events.NewMessage(pattern='/start'))
-async def start_cmd(event):
-    if event.sender_id != MASTER_ID: return
-    db = Database.load()
+async def start_handler(event):
+    if event.sender_id != CURRENT_MASTER:
+        return
+        
+    db = load_db(ACCS_FILE)
+    config = load_db(CONFIG_FILE)
+    acc_data = db.get(str(CURRENT_MASTER), {}).get('accounts', {})
+    count = len(acc_data)
+    
     msg = (
-        "👑 **نظام المصنع الإمبراطوري المتكامل** 👑\n"
-        "━━━━━━━━━━━━━━━━━━━━\n"
-        f"📱 الحسابات: `{len(db['accounts'])}`\n"
-        f"🎯 البوت: `{db['settings']['target']}`\n"
-        f"🔗 الرابط: `{db['settings']['invite_link'][:30] if db['settings']['invite_link'] else 'غير محدد'}...`"
+        "👑 **أهلاً بك في لوحة تحكم المصنع المطور**\n\n"
+        f"📊 عدد حساباتك الحالية: `{count}`\n"
+        f"⏳ تاريخ انتهاء الاشتراك: `{config.get('expiry', '2027-01-01')}`\n"
+        f"📱 الحد الأقصى للأرقام: `{config.get('max_accounts', 500)}`\n"
+        "━━━━━━━━━━━━━━━━━━"
     )
-    btns = [
-        [Button.inline("➕ ربط سيشن", "add"), Button.inline("🗑️ حذف حساب", "del")],
-        [Button.inline("🎯 البوت المستهدف", "set_t"), Button.inline("🔗 رابط الإحالة", "set_i")],
-        [Button.inline("📊 الحسابات", "list"), Button.inline("📥 أداة الاستخراج", "tool")]
+    
+    buttons = [
+        [Button.inline("➕ إضافة رقم تلقائي", data="add_num"), Button.inline("➖ حذف رقم", data="del_num")],
+        [Button.inline("📊 إحصائيات الحسابات", data="stats_all")],
+        [Button.inline("🚀 تشغيل التجميع", data="run_farm"), Button.inline("🔍 فحص الحسابات", data="check_alive")],
+        [Button.inline("💰 رصيد النقاط", data="balance"), Button.inline("💸 تحويل النقاط", data="transfer")],
     ]
-    await event.reply(msg, buttons=btns)
+    
+    if not IS_SUB_BOT:
+        buttons.append([Button.inline("💎 تنصيب بوت لزبون جديد", data="deploy_new")])
+        
+    await event.reply(msg, buttons=buttons)
 
-@bot.on(events.CallbackQuery)
-async def router(event):
-    if event.sender_id != MASTER_ID: return
-    data = event.data.decode()
-    db = Database.load()
+# --- [ معالج الإضافة التلقائية (أهم جزء) ] ---
+@bot.on(events.CallbackQuery(data="add_num"))
+async def add_account_callback(event):
+    uid_str = str(event.sender_id)
+    db = load_db(ACCS_FILE)
+    config = load_db(CONFIG_FILE)
+    
+    if len(db.get(uid_str, {}).get('accounts', {})) >= config.get('max_accounts', 500):
+        return await event.answer("⚠️ عذراً، لقد تجاوزت الحد المسموح به من الأرقام!", alert=True)
 
-    if data == "set_t":
-        async with bot.conversation(event.sender_id) as conv:
-            await conv.send_message("🎯 **أرسل يوزر البوت المستهدف:**")
-            db['settings']['target'] = (await conv.get_response()).text.strip()
-            Database.save(db)
-            await conv.send_message("✅ تم الحفظ.")
-
-    elif data == "set_i":
-        async with bot.conversation(event.sender_id) as conv:
-            await conv.send_message("🔗 **أرسل رابط الإحالة (الذي يحتوي على ?start=):**")
-            db['settings']['invite_link'] = (await conv.get_response()).text.strip()
-            Database.save(db)
-            await conv.send_message("✅ تم حفظ رابط الإحالة بنجاح.")
-
-    elif data == "add":
-        async with bot.conversation(event.sender_id, timeout=300) as conv:
-            await conv.send_message("🔑 **أرسل السيشن (String Session):**")
-            ss = (await conv.get_response()).text.strip()
-            await conv.send_message("📱 **أرسل الرقم المرتبط للتأكيد (بدون +):**")
-            ph = (await conv.get_response()).text.strip()
+    async with bot.conversation(event.sender_id) as conv:
+        try:
+            prompt1 = await conv.send_message("📞 **يرجى إرسال رقم الهاتف الآن:**\nمع رمز الدولة (مثال: `+9647800000000`)")
+            phone = (await conv.get_response()).text.strip()
+            
+            temp_client = TelegramClient(StringSession(), API_ID, API_HASH)
+            await temp_client.connect()
+            
+            await temp_client.send_code_request(phone)
+            await conv.send_message("📩 **أرسل الكود المكون من 5 أرقام:**\n(وصلك في تطبيق التيليجرام)")
+            code = (await conv.get_response()).text.strip().replace(" ", "")
             
             try:
-                temp = TelegramClient(StringSession(ss), API_ID, API_HASH)
-                await temp.connect()
-                me = await temp.get_me()
-                if re.sub(r'\D', '', ph) in me.phone:
-                    db['accounts'][me.phone] = {"ss": ss, "name": me.first_name}
-                    Database.save(db)
-                    await conv.send_message(f"✅ تم ربط الحساب: {me.first_name}")
-                else:
-                    await conv.send_message("❌ الرقم غير مطابق للسيشن!")
-                await temp.disconnect()
-            except Exception as e: await conv.send_message(f"⚠️ خطأ: {e}")
+                await temp_client.sign_in(phone, code)
+            except SessionPasswordNeededError:
+                await conv.send_message("🔐 **الحساب محمي بالتحقق بخطوتين.**\nأرسل كلمة السر الخاصة بك:")
+                password = (await conv.get_response()).text
+                await temp_client.sign_in(password=password)
+            
+            # حفظ البيانات
+            new_session = temp_client.session.save()
+            if uid_str not in db:
+                db[uid_str] = {'accounts': {}, 'target_bot': '@t06bot'}
+            
+            db[uid_str]['accounts'][phone] = {
+                'ss': new_session,
+                'added_at': str(datetime.datetime.now()),
+                'balance': 0
+            }
+            save_db(ACCS_FILE, db)
+            
+            await conv.send_message(f"✅ **تم ربط الحساب بنجاح!**\n📱 الرقم: `{phone}`\n🤖 سيتم التجميع منه تلقائياً.")
+            await temp_client.disconnect()
+            
+        except Exception as e:
+            await conv.send_message(f"❌ **فشل الربط!**\nالسبب: `{str(e)}`")
 
-    elif data == "list":
-        res = "📋 **قائمة الحسابات المربوطة:**\n"
-        for p, i in db['accounts'].items():
-            res += f"• `+{p}` - {i['name']}\n"
-        await event.respond(res)
+# --- [ معالجات الأزرار الأخرى ] ---
+@bot.on(events.CallbackQuery(data="stats_all"))
+async def stats_callback(event):
+    db = load_db(ACCS_FILE)
+    accounts = db.get(str(event.sender_id), {}).get('accounts', {})
+    if not accounts:
+        return await event.answer("⚠️ لا يوجد حسابات مضافة حالياً.", alert=True)
+    
+    report = "📊 **إحصائيات الحسابات:**\n\n"
+    for i, (ph, info) in enumerate(accounts.items(), 1):
+        report += f"{i}- `{ph}` | 📅 {info['added_at'][:10]}\n"
+    
+    await event.respond(report)
 
-    elif data == "tool":
-        sc = f"from telethon import TelegramClient;import asyncio;async def m():\n async with TelegramClient(None,{API_ID},'{API_HASH}') as c:print(c.session.save())\nasyncio.run(m())"
-        with open("tool.py", "w") as f: f.write(sc)
-        await event.respond("🛠 أداة الاستخراج:", file="tool.py")
+@bot.on(events.CallbackQuery(data="deploy_new"))
+async def deploy_callback(event):
+    if IS_SUB_BOT: return
+    async with bot.conversation(event.sender_id) as conv:
+        await conv.send_message("⚙️ **أرسل توكن بوت الزبون:**")
+        token = (await conv.get_response()).text
+        await conv.send_message("👤 **أرسل آيدي الزبون:**")
+        user_id = (await conv.get_response()).text
+        await conv.send_message("⏳ **عدد أيام الاشتراك:**")
+        days = (await conv.get_response()).text
+        
+        expiry_date = (datetime.datetime.now() + datetime.timedelta(days=int(days))).strftime('%Y-%m-%d')
+        config_data = {"expiry": expiry_date, "max_accounts": 500}
+        
+        with open(f"config_{user_id}.json", "w") as f:
+            json.dump(config_data, f)
+            
+        subprocess.Popen([sys.executable, sys.argv[0], token, user_id])
+        await conv.send_message(f"✅ **تم تنصيب البوت بنجاح!**\n📅 ينتهي في: `{expiry_date}`")
 
-# --- [ الإطلاق ] ---
+# --- [ تشغيل البوت والمهام الجانبية ] ---
 if __name__ == '__main__':
     loop = asyncio.get_event_loop()
-    loop.create_task(farming_cycle())
+    loop.create_task(gift_worker())
+    print("✅ البوت يعمل الآن بكفاءة عالية...")
     bot.run_until_disconnected()
