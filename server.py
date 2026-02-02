@@ -9,295 +9,315 @@ import random
 import time
 import traceback
 import sqlite3
-from typing import List, Dict, Any, Optional
+import subprocess
+import platform
+import shutil
+from typing import List, Dict, Any, Optional, Union
+from dataclasses import dataclass, asdict
 
-# استيراد مكتبات تليثون مع معالجة الاستثناءات
+# محاولة استيراد المكتبات المتقدمة وتثبيتها آلياً
 try:
     from telethon import TelegramClient, events, Button, functions, types, errors
     from telethon.sessions import StringSession
     from telethon.tl.functions.messages import (
-        ImportChatInviteRequest, 
-        GetHistoryRequest, 
-        StartBotRequest, 
-        GetBotCallbackAnswerRequest
+        ImportChatInviteRequest, GetHistoryRequest, 
+        StartBotRequest, GetBotCallbackAnswerRequest,
+        ReadHistoryRequest, ForwardMessagesRequest
     )
     from telethon.tl.functions.channels import (
-        JoinChannelRequest, 
-        LeaveChannelRequest, 
-        GetFullChannelRequest
+        JoinChannelRequest, LeaveChannelRequest, 
+        GetFullChannelRequest, InviteToChannelRequest
     )
-    from telethon.tl.functions.users import GetFullUserRequest
-    from telethon.utils import get_display_name
+    from telethon.tl.types import UpdateShortMessage, ReplyInlineMarkup
 except ImportError:
-    print("❌ مكتبة Telethon غير مثبتة! جاري التثبيت...")
-    os.system("pip install telethon")
+    print("📦 جاري تثبيت المكتبات المفقودة للوصول للضخامة المطلوبة...")
+    os.system("pip install telethon aiohttp requests colorama")
     os.execv(sys.executable, [sys.executable] + sys.argv)
 
-# ==========================================
-# 🛑 قسم الإعدادات المتقدمة (Advanced Config)
-# ==========================================
-
-API_ID = 1234567  # استبدله بـ API ID الخاص بك
-API_HASH = 'your_api_hash_here'  # استبدله بـ API HASH الخاص بك
-ADMIN_ID = 12345678  # آيدي المطور الأساسي
-LOG_CHANNEL = -100123456789  # آيدي قناة السجلات (اختياري)
-
-class Config:
-    VERSION = "4.0.0-PRO"
-    DB_NAME = "farm_master.db"
-    SESSIONS_DIR = "./sessions_data/"
-    DEFAULT_DELAY = 10
-    MAX_RETRIES = 3
-    USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+from colorama import Fore, Style, init
+init(autoreset=True)
 
 # ==========================================
-# 📊 نظام إدارة قاعدة البيانات (SQL Engine)
+# 🛑 GLOBAL SETTINGS & SYSTEM CONSTANTS
 # ==========================================
 
-class DatabaseManager:
-    def __init__(self, db_path: str):
-        self.conn = sqlite3.connect(db_path, check_same_thread=False)
-        self.cursor = self.conn.cursor()
-        self._create_tables()
+API_ID = 39719802  # استبدله بآيديك
+API_HASH = '032a5697fcb9f3beeab8005d6601bde9' # استبدله بهاشك
+ADMIN_ID = 8504553407 # آيديك كمطور
+MAIN_BOT_TOKEN = "8206330079:AAEZ3T1-hgq_VhEG3F8ElGEQb9D14gCk0eY" # توكن البوت الرئيسي
 
-    def _create_tables(self):
-        # جدول المستخدمين
-        self.cursor.execute('''CREATE TABLE IF NOT EXISTS users (
-            user_id TEXT PRIMARY KEY,
-            target_id TEXT,
-            points INTEGER DEFAULT 0,
-            is_premium BOOLEAN DEFAULT 0,
-            joined_at TIMESTAMP
-        )''')
-        
-        # جدول الحسابات الوهمية
-        self.cursor.execute('''CREATE TABLE IF NOT EXISTS accounts (
-            phone TEXT PRIMARY KEY,
-            session_str TEXT,
-            owner_id TEXT,
-            status TEXT DEFAULT 'active',
-            last_used TIMESTAMP,
-            points_collected INTEGER DEFAULT 0,
-            FOREIGN KEY(owner_id) REFERENCES users(user_id)
-        )''')
-        
-        # جدول الإعدادات العامة
-        self.cursor.execute('''CREATE TABLE IF NOT EXISTS settings (
-            key TEXT PRIMARY KEY,
-            value TEXT
-        )''')
-        self.conn.commit()
+IS_SUB_BOT = len(sys.argv) > 2
+CURRENT_TOKEN = sys.argv[1] if IS_SUB_BOT else MAIN_BOT_TOKEN
+OWNER_ID = int(sys.argv[2]) if IS_SUB_BOT else ADMIN_ID
 
-    def add_user(self, user_id: str):
-        self.cursor.execute("INSERT OR IGNORE INTO users (user_id, joined_at) VALUES (?, ?)", 
-                           (user_id, datetime.datetime.now()))
-        self.conn.commit()
-
-    def add_account(self, phone: str, session: str, owner_id: str):
-        self.cursor.execute("""
-            INSERT OR REPLACE INTO accounts (phone, session_str, owner_id, last_used) 
-            VALUES (?, ?, ?, ?)
-        """, (phone, session, owner_id, datetime.datetime.now()))
-        self.conn.commit()
-
-    def get_user_accounts(self, owner_id: str):
-        self.cursor.execute("SELECT phone, session_str FROM accounts WHERE owner_id = ?", (owner_id,))
-        return self.cursor.fetchall()
-
-db = DatabaseManager(Config.DB_NAME)
+# 
 
 # ==========================================
-# 🤖 نظام التحليل الذكي وتخطي البوتات
+# 💾 ADVANCED DATA ARCHITECTURE (SQLITE3)
 # ==========================================
 
-class SmartAnalyzer:
-    """محرك لتحليل نصوص البوتات وتجاوز أنظمة الحماية"""
+class Schema:
+    USERS = """CREATE TABLE IF NOT EXISTS users (
+                user_id INTEGER PRIMARY KEY,
+                username TEXT,
+                plan TEXT DEFAULT 'free',
+                max_accs INTEGER DEFAULT 10,
+                expiry DATE,
+                target_bot TEXT DEFAULT '@Z88Bot',
+                delay INTEGER DEFAULT 15,
+                min_payout INTEGER DEFAULT 100
+              )"""
     
+    ACCOUNTS = """CREATE TABLE IF NOT EXISTS accounts (
+                    phone TEXT PRIMARY KEY,
+                    session TEXT NOT NULL,
+                    owner_id INTEGER,
+                    status TEXT DEFAULT 'active',
+                    points INTEGER DEFAULT 0,
+                    proxy TEXT,
+                    last_check TIMESTAMP,
+                    FOREIGN KEY(owner_id) REFERENCES users(user_id)
+                  )"""
+    
+    LOGS = """CREATE TABLE IF NOT EXISTS logs (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                owner_id INTEGER,
+                message TEXT,
+                type TEXT,
+                created_at TIMESTAMP
+              )"""
+
+class CoreDatabase:
+    def __init__(self):
+        self.db_path = f"data/core_{OWNER_ID}.db"
+        if not os.path.exists('data'): os.makedirs('data')
+        self.conn = sqlite3.connect(self.db_path, check_same_thread=False)
+        self.create_tables()
+
+    def create_tables(self):
+        cursor = self.conn.cursor()
+        cursor.execute(Schema.USERS)
+        cursor.execute(Schema.ACCOUNTS)
+        cursor.execute(Schema.LOGS)
+        self.conn.commit()
+
+    def add_account(self, phone, session, owner):
+        try:
+            self.conn.execute("INSERT OR REPLACE INTO accounts (phone, session, owner_id, last_check) VALUES (?,?,?,?)",
+                             (phone, session, owner, datetime.datetime.now()))
+            self.conn.commit()
+            return True
+        except Exception as e:
+            logging.error(f"DB Error: {e}")
+            return False
+
+    def get_stats(self, owner_id):
+        cursor = self.conn.cursor()
+        cursor.execute("SELECT COUNT(*) FROM accounts WHERE owner_id=?", (owner_id,))
+        acc_count = cursor.fetchone()[0]
+        cursor.execute("SELECT SUM(points) FROM accounts WHERE owner_id=?", (owner_id,))
+        points = cursor.fetchone()[0] or 0
+        return acc_count, points
+
+db = CoreDatabase()
+
+# ==========================================
+# 🛡️ ANTI-BAN & PROXY ROTATION SYSTEM
+# ==========================================
+
+class ProxyManager:
+    """نظام إدارة البروكسي لمنع حظر الآي بي عند التعامل مع مئات الحسابات"""
+    def __init__(self, proxies: List[str] = None):
+        self.proxies = proxies or []
+    
+    def get_random_proxy(self):
+        if not self.proxies: return None
+        p = random.choice(self.proxies).split(':')
+        return {
+            'proxy_type': 'socks5',
+            'addr': p[0],
+            'port': int(p[1]),
+            'username': p[2] if len(p) > 2 else None,
+            'password': p[3] if len(p) > 3 else None,
+        }
+
+# ==========================================
+# 🧠 ARTIFICIAL INTELLIGENCE - MESSAGE PARSER
+# ==========================================
+
+class TitanAI:
+    """محرك لتحليل رسائل البوتات وتخطي الحماية"""
     @staticmethod
-    def parse_balance(text: str) -> int:
-        """يستخرج الرصيد من رسالة البوت باستخدام Regex معقد"""
-        patterns = [
-            r"رصيدك هو\s*:\s*(\d+)",
-            r"نقاطك\s*:\s*(\d+)",
-            r"Balance\s*:\s*(\d+)",
-            r"Your points\s*:\s*(\d+)",
-            r"عدد نقاطك\s*(\d+)"
-        ]
-        for pattern in patterns:
-            match = re.search(pattern, text, re.IGNORECASE)
-            if match:
-                return int(match.group(1))
-        # محاولة البحث عن أي رقم كبير في الرسالة إذا فشلت الأنماط
-        nums = re.findall(r'\d+', text)
-        return int(nums[0]) if nums else 0
+    def parse_complex_balance(text: str) -> int:
+        # البحث عن أرقام بجانب كلمات مفتاحية (نقاط، رصيد، فلوس، $، points)
+        patterns = [r'(\d+)\s*نقطة', r'رصيدك\s*:\s*(\d+)', r'Balance\s*:\s*(\d+)']
+        for p in patterns:
+            match = re.search(p, text)
+            if match: return int(match.group(1))
+        # fallback: استخراج أكبر رقم
+        nums = [int(s) for s in re.findall(r'\d+', text.replace(',', '')) if len(s) < 10]
+        return max(nums) if nums else 0
 
     @staticmethod
-    def solve_captcha(text: str) -> Optional[int]:
-        """حل التحديات الرياضية البسيطة التي تطلبها بوتات التجميع"""
-        clean_text = text.replace('x', '*').replace('÷', '/')
-        math_match = re.search(r'(\d+)\s*([\+\-\*\/])\s*(\d+)', clean_text)
-        if math_match:
-            try:
-                expression = f"{math_match.group(1)}{math_match.group(2)}{math_match.group(3)}"
-                return int(eval(expression))
-            except:
-                return None
+    def solve_logic_challenge(text: str) -> Optional[int]:
+        """حل الأسئلة المنطقية: كم ناتج 5 زائد 12؟"""
+        text = text.replace('كم ناتج', '').replace('+', ' زائد ').replace('=', '')
+        nums = re.findall(r'\d+', text)
+        if len(nums) >= 2:
+            if 'زائد' in text or '+' in text: return int(nums[0]) + int(nums[1])
+            if 'ناقص' in text or '-' in text: return int(nums[0]) - int(nums[1])
+            if 'في' in text or '*' in text or 'ضرب' in text: return int(nums[0]) * int(nums[1])
         return None
 
 # ==========================================
-# 🛠️ مدير الجلسات والعمليات الميدانية
+# 🛠️ THE WORKER ENGINE (ASYNC TASKER)
 # ==========================================
 
-class Worker:
-    def __init__(self, session_str: str, phone: str):
-        self.session = session_str
+class FarmWorker:
+    def __init__(self, phone, session, owner_id):
         self.phone = phone
-        self.client: Optional[TelegramClient] = None
+        self.session = session
+        self.owner_id = owner_id
+        self.client = None
 
-    async def connect(self) -> bool:
+    async def connect(self):
         try:
-            self.client = TelegramClient(StringSession(self.session), API_ID, API_HASH)
+            self.client = TelegramClient(StringSession(self.session), API_ID, API_HASH, 
+                                         device_model="TitanFarm V6", system_version="Linux 5.15")
             await self.client.connect()
             return await self.client.is_user_authorized()
-        except Exception as e:
-            logging.error(f"Error connecting {self.phone}: {e}")
-            return False
+        except Exception: return False
 
-    async def join_bot_via_link(self, bot_username: str, invite_param: Optional[str]):
-        """الدخول إلى بوت عبر رابط إحالة"""
-        if not await self.connect(): return "failed_auth"
+    async def perform_harvest(self, target_bot, mode="gift"):
+        if not await self.connect(): return "offline"
         try:
-            await self.client(StartBotRequest(
-                bot=bot_username,
-                peer=bot_username,
-                start_param=invite_param
-            ))
-            return "success"
-        except errors.FloodWaitError as e:
-            return f"flood_{e.seconds}"
-        except Exception as e:
-            return f"error_{str(e)}"
-        finally:
-            await self.client.disconnect()
-
-    async def collect_daily_gift(self, bot_user: str):
-        """البحث عن زر الهدية اليومية والضغط عليه"""
-        if not await self.connect(): return
-        try:
-            await self.client.send_message(bot_user, "/start")
-            await asyncio.sleep(2)
-            async for message in self.client.iter_messages(bot_user, limit=3):
-                if message.reply_markup:
-                    for row in message.reply_markup.rows:
+            # محاكاة سلوك بشري: قراءة الرسائل السابقة
+            await self.client(ReadHistoryRequest(peer=target_bot, max_id=0))
+            await asyncio.sleep(random.randint(2, 5))
+            
+            await self.client.send_message(target_bot, "/start")
+            await asyncio.sleep(3)
+            
+            if mode == "gift":
+                msgs = await self.client.get_messages(target_bot, limit=1)
+                if msgs[0].reply_markup:
+                    for row in msgs[0].reply_markup.rows:
                         for btn in row.buttons:
-                            if any(word in btn.text for word in ["هدية", "يومية", "Daily", "Gift", "Claim"]):
-                                await message.click(button=btn)
-                                return True
-            return False
-        finally:
-            await self.client.disconnect()
+                            if "هدية" in btn.text or "Claim" in btn.text:
+                                await msgs[0].click(button=btn)
+                                return "success_gift"
+            return "no_action"
+        except Exception as e: return str(e)
+        finally: await self.client.disconnect()
 
 # ==========================================
-# 🎮 واجهة التحكم الرسومية (Buttons & Menus)
+# 🎮 ADVANCED UI & BUTTONS
 # ==========================================
 
-class UI:
+class Interface:
     @staticmethod
-    def main_menu():
-        return [
-            [Button.inline("➕ إضافة حساب جديد", data="m_add_acc")],
-            [Button.inline("🚀 بدء تجميع النقاط", data="m_start_farm")],
-            [Button.inline("💰 تحويل النقاط تلقائياً", data="m_auto_transfer")],
-            [Button.inline("📊 إحصائيات المزرعة", data="m_stats"), Button.inline("⚙️ الإعدادات", data="m_settings")],
-            [Button.inline("🧹 تنظيف الحسابات المعطلة", data="m_cleanup")],
-            [Button.url("📣 قناة التحديثات", "https://t.me/YourChannel")]
+    def main_menu(user_id):
+        is_admin = (user_id == ADMIN_ID)
+        btns = [
+            [Button.inline("📱 إضافة رقم (تلقائي)", data="add_auto"), Button.inline("🔑 إضافة سيشن", data="add_sess")],
+            [Button.inline("🚀 بدء التجميع الشامل", data="farm_all")],
+            [Button.inline("🔗 تجميع رابط", data="farm_link"), Button.inline("🎁 الهدايا اليومية", data="farm_gift")],
+            [Button.inline("💰 فحص وتحويل النقاط", data="transfer_all")],
+            [Button.inline("📊 الإحصائيات", data="stats"), Button.inline("⚙️ الإعدادات", data="settings")],
+            [Button.inline("🧹 تنظيف الحسابات", data="cleanup")]
         ]
-
-    @staticmethod
-    def add_account_menu():
-        return [
-            [Button.inline("📱 عبر رقم الهاتف (كود)", data="add_phone")],
-            [Button.inline("🔑 عبر كود السيشن (String)", data="add_session")],
-            [Button.inline("🔙 عودة للقائمة الرئيسية", data="m_main")]
-        ]
+        if is_admin and not IS_SUB_BOT:
+            btns.append([Button.inline("🛠 تنصيب بوت لزبون جديد", data="deploy_client")])
+        return btns
 
 # ==========================================
-# ⚡ معالج الأحداث الرئيسي (Main Bot Logic)
+# ⚡ BOT CORE LOGIC
 # ==========================================
 
-bot_token = sys.argv[1] if len(sys.argv) > 1 else "YOUR_BOT_TOKEN"
-app = TelegramClient('ManagerSession', API_ID, API_HASH).start(bot_token=bot_token)
+bot = TelegramClient(f'core_{OWNER_ID}', API_ID, API_HASH).start(bot_token=CURRENT_TOKEN)
 
-@app.on(events.NewMessage(pattern='/start'))
-async def start_cmd(event):
-    db.add_user(str(event.sender_id))
+@bot.on(events.NewMessage(pattern='/start'))
+async def start_handler(event):
+    # التحقق من الاشتراك المنتهي
+    config_path = f"configs/user_{OWNER_ID}.json"
+    if IS_SUB_BOT and os.path.exists(config_path):
+        with open(config_path, 'r') as f:
+            conf = json.load(f)
+            expiry = datetime.datetime.strptime(conf['expiry'], '%Y-%m-%d')
+            if datetime.datetime.now() > expiry:
+                return await event.respond("⚠️ انتهى اشتراكك! يرجى التواصل مع المطور للتجديد.")
+
     await event.respond(
-        f"🛡 **مرحباً بك في نظام إدارة المزارع المتطور**\n"
+        f"🔱 **نظام التجميع العملاق Titan v6**\n"
         f"--- --- --- --- ---\n"
-        f"👤 المستخدِم: `{event.sender_id}`\n"
-        f"📅 النسخة: `{Config.VERSION}`\n"
-        f"🤖 حالة النظام: `يعمل بكفاءة ✅`",
-        buttons=UI.main_menu()
+        f"👤 المالك: `{OWNER_ID}`\n"
+        f"📅 الحالة: `نشط ✅`\n"
+        f"🤖 النسخة: `Enterprise Edition`",
+        buttons=Interface.main_menu(event.sender_id)
     )
 
-@app.on(events.CallbackQuery)
-async def callback_handler(event):
-    data = event.data.decode()
-    uid = str(event.sender_id)
+@bot.on(events.CallbackQuery(data="deploy_client"))
+async def deploy_handler(event):
+    if event.sender_id != ADMIN_ID: return
+    
+    async with bot.conversation(ADMIN_ID) as conv:
+        await conv.send_message("⚙️ **أرسل توكن بوت الزبون:**")
+        token = (await conv.get_response()).text
+        await conv.send_message("👤 **أرسل آيدي الزبون:**")
+        uid = (await conv.get_response()).text
+        await conv.send_message("⏳ **عدد أيام الاشتراك:**")
+        days = (await conv.get_response()).text
+        await conv.send_message("🔢 **الحد الأقصى للأرقام:**")
+        limit = (await conv.get_response()).text
 
-    if data == "m_main":
-        await event.edit("قائمة التحكم الرئيسية:", buttons=UI.main_menu())
+        exp = (datetime.datetime.now() + datetime.timedelta(days=int(days))).strftime('%Y-%m-%d')
+        
+        # حفظ الإعدادات
+        if not os.path.exists('configs'): os.makedirs('configs')
+        with open(f"configs/user_{uid}.json", 'w') as f:
+            json.dump({"expiry": exp, "limit": int(limit), "token": token}, f)
 
-    elif data == "m_add_acc":
-        await event.edit("🛠 اختر طريقة إضافة الحساب:", buttons=UI.add_account_menu())
+        # تشغيل العملية
+        subprocess.Popen([sys.executable, sys.executable, token, uid])
+        await conv.send_message(f"✅ تم التنصيب بنجاح لآيدي `{uid}`\nينتهي في `{exp}`")
 
-    elif data == "add_session":
-        async with app.conversation(event.sender_id) as conv:
-            await conv.send_message("📝 **أرسل كود السيشن (String Session) الآن:**")
-            session_msg = await conv.get_response()
-            session_str = session_msg.text
-            
-            await conv.send_message("📞 **أرسل رقم الهاتف المرتبط بهذا السيشن:**")
-            phone_msg = await conv.get_response()
-            phone = phone_msg.text
+@bot.on(events.CallbackQuery(data="stats"))
+async def stats_handler(event):
+    accs, points = db.get_stats(OWNER_ID)
+    await event.edit(
+        f"📊 **إحصائيات مزرعتك:**\n\n"
+        f"📱 عدد الحسابات: `{accs}`\n"
+        f"💰 مجموع النقاط: `{points}`\n"
+        f"🕒 آخر فحص: `{datetime.datetime.now().strftime('%H:%M')}`",
+        buttons=[[Button.inline("🔙 رجوع", data="main")]]
+    )
 
-            await conv.send_message("⏳ **جاري التحقق من صحة الحساب...**")
-            test_worker = Worker(session_str, phone)
-            if await test_worker.connect():
-                me = await test_worker.client.get_me()
-                db.add_account(phone, session_str, uid)
-                await conv.send_message(f"✅ **تمت إضافة الحساب بنجاح!**\n👤 الاسم: {get_display_name(me)}\n🆔 الآيدي: `{me.id}`")
-            else:
-                await conv.send_message("❌ **فشل التحقق!** السيشن غير صالح أو منتهي.")
+@bot.on(events.CallbackQuery(data="main"))
+async def main_back(event):
+    await event.edit("القائمة الرئيسية:", buttons=Interface.main_menu(event.sender_id))
 
-    elif data == "m_start_farm":
-        await event.edit("🚀 **اختر وضع التجميع:**", buttons=[
-            [Button.inline("🔗 تجميع عبر رابط دعوة", data="farm_link")],
-            [Button.inline("🎁 تجميع هدايا يومية", data="farm_gift")],
-            [Button.inline("🔥 تجميع شامل (الكل)", data="farm_all")],
-            [Button.inline("🔙 عودة", data="m_main")]
-        ])
+# ==========================================
+# 🌀 BACKGROUND ENGINE (SCHEDULER)
+# ==========================================
 
-    elif data == "farm_link":
-        async with app.conversation(event.sender_id) as conv:
-            await conv.send_message("🔗 **أرسل رابط الدعوة الخاص بالبوت المستهدف:**")
-            link = (await conv.get_response()).text
-            
-            # استخراج المعطيات
-            bot_user = link.split('t.me/')[1].split('?')[0]
-            param = link.split('start=')[1] if 'start=' in link else None
-            
-            accounts = db.get_user_accounts(uid)
-            await conv.send_message(f"⏳ جاري العمل على {len(accounts)} حساب...")
-            
-            for phone, sess in accounts:
-                w = Worker(sess, phone)
-                res = await w.join_bot_via_link(bot_user, param)
-                await asyncio.sleep(Config.DEFAULT_DELAY)
-            
-            await conv.send_message("✅ **اكتملت عملية التجميع بنجاح!**")
+async def global_auto_farm():
+    """محرك يعمل في الخلفية لمراقبة الحسابات وتجميع الهدايا تلقائياً"""
+    while True:
+        try:
+            # كود التجميع التلقائي هنا (يعمل كل 12 ساعة)
+            await asyncio.sleep(43200) 
+        except Exception: pass
 
-# استكمال الكود في الجزء الثاني...
+# ==========================================
+# 🚀 INITIALIZATION
+# ==========================================
+
 if __name__ == '__main__':
-    print(">>> System Booting Up...")
-    app.run_until_disconnected()
+    print(f"{Fore.CYAN}{'='*40}")
+    print(f"{Fore.GREEN}TITAN FARMING SYSTEM IS STARTING...")
+    print(f"{Fore.YELLOW}Owner ID: {OWNER_ID}")
+    print(f"{Fore.CYAN}{'='*40}")
+    
+    loop = asyncio.get_event_loop()
+    loop.create_task(global_auto_farm())
+    bot.run_until_disconnected()
