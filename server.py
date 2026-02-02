@@ -76,7 +76,7 @@ if len(sys.argv) > 2:
     MASTER_ID = int(sys.argv[2])
 else:
     MASTER_ID = 8504553407  
-    BOT_TOKEN = '8206330079:AAEZ3T1-hgq_VhEG3F8ElGEQb9D14gCk0eY'
+    BOT_TOKEN = '8331141429:AAGeDiqh7Wqk0fiOQMDNbPSGTuXztIP0SzA'
 
 DB_FILE = f'giga_v50_db_{MASTER_ID}.json'
 
