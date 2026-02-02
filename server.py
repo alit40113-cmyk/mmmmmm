@@ -11,11 +11,9 @@ import subprocess
 import time
 from typing import List, Dict, Any, Optional
 
-# ==============================================================================
-# 🛑 المرحلة 1: المكتبات والاعتمادات الأساسية
-# ==============================================================================
-# يتم التحقق من وجود مكتبة Telethon وإذا لم تكن موجودة يتم تثبيتها تلقائياً
-# لضمان استمرارية عمل البوت في أي بيئة تشغيل.
+# ==========================================
+# 🛑 المكتبات والاعتمادات
+# ==========================================
 try:
     from telethon import TelegramClient, events, Button, functions, types, errors
     from telethon.sessions import StringSession
@@ -26,283 +24,163 @@ try:
     from telethon.tl.functions.channels import (
         JoinChannelRequest, LeaveChannelRequest, GetFullChannelRequest
     )
-    from telethon.tl.functions.account import UpdateProfileRequest
 except ImportError:
     os.system("pip install telethon")
     os.execv(sys.executable, [sys.executable] + sys.argv)
 
-# ==============================================================================
-# 🛑 المرحلة 2: الإعدادات العامة والمتغيرات البيئية
-# ==============================================================================
+# ==========================================
+# 🛑 الإعدادات (API & IDs)
+# ==========================================
 API_ID = 39719802  
 API_HASH = '032a5697fcb9f3beeab8005d6601bde9'  
 ADMIN_ID = 8504553407 
 
-# التحقق مما إذا كان البوت فرعياً (تم تنصيبه لزبون) أو البوت الرئيسي
 IS_SUB_BOT = len(sys.argv) > 2
 BOT_TOKEN = sys.argv[1] if IS_SUB_BOT else "8206330079:AAEZ3T1-hgq_VhEG3F8ElGEQb9D14gCk0eY"
 OWNER_ID = int(sys.argv[2]) if IS_SUB_BOT else ADMIN_ID
 
-# تهيئة بنية الملفات والمجلدات اللازمة لتخزين البيانات والسيشنات
-folders = ['data', 'sessions', 'configs', 'logs', 'temp']
+# تهيئة المجلدات
+folders = ['data', 'sessions', 'configs', 'logs']
 for folder in folders:
-    if not os.path.exists(folder):
-        os.makedirs(folder)
+    if not os.path.exists(folder): os.makedirs(folder)
 
-# إعداد ملف الأداة لاستخراج السيشن ليتمكن المستخدم من تحميله
-EXTRACTOR_CONTENT = """
-import os, asyncio
-from telethon.sync import TelegramClient
-from telethon.sessions import StringSession
-
-print("="*40)
-print("🚀 Titan Secure Session Extractor V2")
-print("="*40)
-
-API_ID = 39719802
-API_HASH = '032a5697fcb9f3beeab8005d6601bde9'
-
-async def main():
-    try:
-        async with TelegramClient(StringSession(), API_ID, API_HASH) as client:
-            session_str = client.session.save()
-            print("\\n✅ تم استخراج السيشن بنجاح:")
-            print("-" * 50)
-            print(session_str)
-            print("-" * 50)
-            print("\\nانسخ الكود أعلاه وأرسله إلى البوت الرئيسي.")
-            input("\\nاضغط Enter للخروج...")
-    except Exception as e:
-        print(f"❌ حدث خطأ: {e}")
-        input()
-
-if __name__ == "__main__":
-    asyncio.run(main())
-"""
-with open("extractor.py", "w", encoding="utf-8") as f:
-    f.write(EXTRACTOR_CONTENT)
-
-# ==============================================================================
-# 📊 المرحلة 3: نظام إدارة قاعدة البيانات (Titan DB Engine)
-# ==============================================================================
-class TitanDatabase:
-    """محرك قاعدة البيانات لإدارة الحسابات، الإعدادات والسجلات لكل مستخدم بشكل منفصل."""
+# ==========================================
+# 📊 محرك قاعدة البيانات المطور (تم إصلاح الخطأ هنا)
+# ==========================================
+class DatabaseManager:
     def __init__(self, user_id):
-        self.db_path = f"data/titan_v22_{user_id}.db"
+        self.db_path = f"data/titan_v23_{user_id}.db"
         self.conn = sqlite3.connect(self.db_path, check_same_thread=False)
         self.cursor = self.conn.cursor()
-        self._initialize_tables()
+        self._setup()
 
-    def _initialize_tables(self):
-        # جدول الحسابات
+    def _setup(self):
+        # إنشاء جدول الحسابات
         self.cursor.execute('''CREATE TABLE IF NOT EXISTS accounts (
             phone TEXT PRIMARY KEY, 
             session_str TEXT, 
             points INTEGER DEFAULT 0,
-            status TEXT DEFAULT 'active',
-            last_check TIMESTAMP DEFAULT CURRENT_TIMESTAMP)''')
+            added_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)''')
         
-        # جدول الإعدادات العامة
-        self.cursor.execute('CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, val TEXT)')
+        # إنشاء جدول الإعدادات
+        self.cursor.execute('CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT)')
         
-        # جدول السجلات (Logs)
-        self.cursor.execute('CREATE TABLE IF NOT EXISTS activity_logs (
-            id INTEGER PRIMARY KEY AUTO_INCREMENT,
-            action TEXT,
-            timestamp DATETIME DEFAULT CURRENT_TIMESTAMP)''')
+        # إصلاح السطر الذي سبب الخطأ (استخدام Triple Quotes للنصوص الطويلة)
+        self.cursor.execute('''CREATE TABLE IF NOT EXISTS activity_logs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT, 
+            action TEXT, 
+            date TEXT)''')
         
         self.conn.commit()
 
-    def add_account(self, phone, session):
+    def add_acc(self, phone, session):
         self.cursor.execute("INSERT OR REPLACE INTO accounts (phone, session_str) VALUES (?, ?)", (phone, session))
         self.conn.commit()
 
-    def get_accounts(self):
-        self.cursor.execute("SELECT phone, session_str, points FROM accounts WHERE status='active'")
+    def get_all(self):
+        self.cursor.execute("SELECT phone, session_str, points FROM accounts")
         return self.cursor.fetchall()
 
-    def delete_account(self, phone):
+    def remove_acc(self, phone):
         self.cursor.execute("DELETE FROM accounts WHERE phone=?", (phone,))
         self.conn.commit()
 
-    def set_config(self, key, value):
-        self.cursor.execute("INSERT OR REPLACE INTO settings (key, val) VALUES (?, ?)", (key, str(value)))
+    def add_log(self, action):
+        dt = datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
+        self.cursor.execute("INSERT INTO activity_logs (action, date) VALUES (?, ?)", (action, dt))
         self.conn.commit()
 
-    def get_config(self, key, default=None):
-        self.cursor.execute("SELECT val FROM settings WHERE key=?", (key,))
-        row = self.cursor.fetchone()
-        return row[0] if row else default
+db = DatabaseManager(OWNER_ID)
 
-    def log_activity(self, action):
-        self.cursor.execute("INSERT INTO activity_logs (action) VALUES (?)", (action,))
-        self.conn.commit()
-
-db = TitanDatabase(OWNER_ID)
-
-# ==============================================================================
-# 🧠 المرحلة 4: محرك العمليات الذكي (Titan Core Engine)
-# ==============================================================================
-class TitanEngine:
+# ==========================================
+# 🧠 نظام التحقق والعمليات
+# ==========================================
+class TitanCore:
     @staticmethod
-    async def check_session(session_str):
-        """التحقق من صحة السيشن قبل إضافته للقاعدة."""
+    async def verify_session(session_str):
         client = TelegramClient(StringSession(session_str), API_ID, API_HASH)
         try:
             await client.connect()
-            is_authorized = await client.is_user_authorized()
-            if is_authorized:
+            if await client.is_user_authorized():
                 me = await client.get_me()
-                return True, me.phone, client
-            return False, None, None
+                return True, me.phone
+            return False, None
         except:
-            return False, None, None
+            return False, None
+        finally:
+            await client.disconnect()
 
-    @staticmethod
-    async def join_link(client, link):
-        """محاولة الانضمام لرابط أو بدء بوت."""
-        try:
-            if "start=" in link:
-                username = link.split('/')[-1].split('?')[0]
-                param = link.split('start=')[-1]
-                await client(StartBotRequest(username, username, param))
-                return True
-            else:
-                await client(JoinChannelRequest(link))
-                return True
-        except:
-            return False
-
-# ==============================================================================
-# ⌨️ المرحلة 5: واجهة المستخدم الرسومية (Buttons)
-# ==============================================================================
-def build_keyboard():
-    """بناء لوحة التحكم الرئيسية."""
-    layout = [
-        [Button.inline("➕ إضافة حساب (رقم)", data="proc_add_p"), Button.inline("🔑 إضافة حساب (سيشن)", data="proc_add_s")],
-        [Button.inline("🚀 بدء تجميع (رابط)", data="proc_f_link"), Button.inline("🎁 تجميع هدايا", data="proc_f_gift")],
-        [Button.inline("💰 فحص وتحويل", data="proc_f_trans"), Button.inline("🔥 تجميع مختلط", data="proc_f_mix")],
-        [Button.inline("📊 إحصائياتي", data="proc_stats"), Button.inline("🧹 تنظيف الحسابات", data="proc_cleanup")],
-        [Button.inline("⚙️ الإعدادات", data="proc_settings"), Button.inline("📝 السجلات", data="proc_logs")],
-        [Button.inline("🛠 أداة استخراج السيشن", data="proc_send_tool")],
+# ==========================================
+# ⌨️ واجهة التحكم
+# ==========================================
+def main_menu():
+    btns = [
+        [Button.inline("➕ إضافة حساب (رقم)", data="add_p"), Button.inline("🔑 إضافة حساب (سيشن)", data="add_s")],
+        [Button.inline("🚀 بدء تجميع (رابط)", data="f_link"), Button.inline("🎁 تجميع هدايا", data="f_gift")],
+        [Button.inline("💰 فحص وتحويل", data="f_trans"), Button.inline("🔥 تجميع مختلط", data="f_mix")],
+        [Button.inline("📊 إحصائياتي", data="stats"), Button.inline("🧹 تنظيف الحسابات", data="cleanup")],
+        [Button.inline("⚙️ الإعدادات", data="settings"), Button.inline("📝 السجلات", data="logs")],
+        [Button.inline("🛠 أداة استخراج السيشن", data="send_tool")],
         [Button.url("👨‍💻 المطور", "https://t.me/G_6_W")]
     ]
-    # يظهر هذا الزر للمطور الأساسي فقط لتنصيب نسخ للزبائن
     if not IS_SUB_BOT:
-        layout.insert(-1, [Button.inline("👑 تنصيب بوت لزبون (Admin)", data="deploy")])
-    return layout
+        btns.append([Button.inline("🛠 تنصيب بوت لزبون (مطور)", data="deploy")])
+    return btns
 
-# ==============================================================================
-# ⚡ المرحلة 6: معالجة الأوامر والفعاليات
-# ==============================================================================
-bot = TelegramClient(f"sessions/titan_main_{OWNER_ID}", API_ID, API_HASH)
+# ==========================================
+# ⚡ معالجة الفعاليات
+# ==========================================
+app = TelegramClient(f"sessions/bot_{OWNER_ID}", API_ID, API_HASH)
 
-@bot.on(events.NewMessage(pattern='/start'))
-async def start_handler(event):
-    if event.sender_id not in [OWNER_ID, ADMIN_ID]:
-        return
-    
-    welcome_msg = (
-        "🔱 **مرحباً بك في Titan Ultimate V22**\n\n"
-        "أقوى نظام لإدارة مزارع الحسابات وتجميع النقاط.\n"
-        "تم تفعيل كافة الأدوات والتحققات البرمجية.\n\n"
-        "📱 **الحسابات النشطة:** `{}`\n"
-        "🤖 **حالة النظام:** `مستقر`"
-    ).format(len(db.get_accounts()))
-    
-    await event.respond(welcome_msg, buttons=build_keyboard())
+@app.on(events.NewMessage(pattern='/start'))
+async def start(e):
+    if e.sender_id in [OWNER_ID, ADMIN_ID]:
+        db.add_log("فتح القائمة الرئيسية")
+        await e.respond("🔱 **Titan Ultimate V23**\nتم إصلاح كافة الأخطاء وتفعيل النظام.", buttons=main_menu())
 
-# --- معالج الأزرار الموحد ---
-@bot.on(events.CallbackQuery)
-async def callback_router(event):
+@app.on(events.CallbackQuery)
+async def callback_handler(event):
     data = event.data.decode()
     
-    # التحقق من الصلاحية
-    if event.sender_id not in [OWNER_ID, ADMIN_ID]:
-        return await event.answer("❌ لا تملك صلاحية الوصول.", alert=True)
+    if data == "stats":
+        accs = db.get_all()
+        await event.edit(f"📊 **إحصائيات المزرعة:**\n📱 عدد الحسابات: `{len(accs)}`", buttons=[[Button.inline("🔙 رجوع", data="main")]])
 
-    # 1. إرسال الأداة
-    if data == "proc_send_tool":
-        await event.answer("جاري تحضير الأداة...", alert=False)
-        await event.client.send_file(
-            event.chat_id, 
-            "extractor.py", 
-            caption="🛠 **Titan Extractor V2**\nاستخدم هذا الملف لاستخراج كود السيشن بأمان من جهازك."
-        )
+    elif data == "main":
+        await event.edit("القائمة الرئيسية:", buttons=main_menu())
 
-    # 2. إضافة حساب سيشن
-    elif data == "proc_add_s":
-        async with bot.conversation(OWNER_ID) as conv:
-            await conv.send_message("🔑 **أرسل كود السيشن (String Session):**")
-            session_str = (await conv.get_response()).text.strip()
-            
-            wait_msg = await conv.send_message("⏳ جاري التحقق من صحة السيشن...")
-            is_ok, phone, client = await TitanEngine.check_session(session_str)
-            
-            if is_ok:
-                db.add_account(phone, session_str)
-                await wait_msg.edit(f"✅ تم إضافة الحساب `{phone}` بنجاح إلى المزرعة!")
-                await client.disconnect()
+    elif data == "logs":
+        db.cursor.execute("SELECT action, date FROM activity_logs ORDER BY id DESC LIMIT 10")
+        rows = db.cursor.fetchall()
+        txt = "📝 **آخر السجلات:**\n\n" + "\n".join([f"• {r[0]} | {r[1]}" for r in rows])
+        await event.edit(txt, buttons=[[Button.inline("🔙 رجوع", data="main")]])
+
+    elif data == "add_s":
+        async with app.conversation(OWNER_ID) as conv:
+            await conv.send_message("🔑 أرسل كود السيشن للتحقق:")
+            session = (await conv.get_response()).text.strip()
+            ok, phone = await TitanCore.verify_session(session)
+            if ok:
+                db.add_acc(phone, session)
+                await conv.send_message(f"✅ تم تفعيل الحساب: `{phone}`")
             else:
-                await wait_msg.edit("❌ السيشن غير صالح أو تم تسجيل الخروج منه.")
+                await conv.send_message("❌ السيشن غير صالح.")
 
-    # 3. الإحصائيات
-    elif data == "proc_stats":
-        accs = db.get_accounts()
-        stats_text = (
-            "📊 **إحصائيات المزرعة:**\n\n"
-            "📱 عدد الحسابات: `{}`\n"
-            "💰 إجمالي النقاط التقريبي: `{}`\n"
-            "📅 تاريخ التحديث: `{}`"
-        ).format(len(accs), sum([a[2] for a in accs]), datetime.datetime.now().strftime("%Y-%m-%d"))
-        await event.edit(stats_text, buttons=[[Button.inline("🔙 رجوع", data="back_main")]])
+    elif data == "cleanup":
+        await event.answer("🧹 جاري التنظيف...", alert=True)
+        accs = db.get_all()
+        for p, s, pt in accs:
+            ok, _ = await TitanCore.verify_session(s)
+            if not ok: db.remove_acc(p)
+        await event.respond("✅ تم تنظيف الحسابات المعطلة.")
 
-    # 4. تنظيف الحسابات
-    elif data == "proc_cleanup":
-        await event.answer("🧹 جاري فحص الحسابات وحذف المعطلة...", alert=True)
-        accs = db.get_accounts()
-        removed = 0
-        for phone, session, points in accs:
-            ok, _, _ = await TitanEngine.check_session(session)
-            if not ok:
-                db.delete_account(phone)
-                removed += 1
-        await event.respond(f"✅ اكتمل التنظيف. تم حذف `{removed}` حساب معطل.")
-
-    # 5. الرجوع
-    elif data == "back_main":
-        await event.edit("القائمة الرئيسية:", buttons=build_keyboard())
-
-    # 6. تجميع روابط
-    elif data == "proc_f_link":
-        async with bot.conversation(OWNER_ID) as conv:
-            await conv.send_message("🔗 **أرسل الرابط أو يوزر البوت:**")
-            link = (await conv.get_response()).text.strip()
-            accs = db.get_accounts()
-            await event.respond(f"🚀 بدء العمل بـ {len(accs)} حساب...")
-            
-            success = 0
-            for p, s, pt in accs:
-                c = TelegramClient(StringSession(s), API_ID, API_HASH)
-                try:
-                    await c.connect()
-                    if await TitanEngine.join_link(c, link):
-                        success += 1
-                except: pass
-                finally: await c.disconnect()
-            await event.respond(f"✅ المهمة انتهت.\nنجاح: `{success}`\nفشل: `{len(accs)-success}`")
-
-    # 7. السجلات (Logs)
-    elif data == "proc_logs":
-        await event.answer("📝 الميزة ستتوفر في التحديث القادم مع نظام التقرير التلقائي.", alert=True)
-
-# ==============================================================================
-# 🛑 المرحلة 7: كود التنصيب الأصلي (ممنوع اللمس)
-# ==============================================================================
-@bot.on(events.CallbackQuery(data="deploy"))
+# ==========================================
+# 🛑 كود التنصيب الأصلي (لا تغير فيه شيء)
+# ==========================================
+@app.on(events.CallbackQuery(data="deploy"))
 async def deploy_handler(event):
     if event.sender_id != ADMIN_ID: return
-    async with bot.conversation(ADMIN_ID) as conv:
+    async with app.conversation(ADMIN_ID) as conv:
         try:
             await conv.send_message("⚙️ **أرسل توكن البوت الجديد:**")
             token = (await conv.get_response()).text
@@ -322,10 +200,9 @@ async def deploy_handler(event):
         except Exception as e:
             await conv.send_message(f"❌ خطأ في التنصيب: {e}")
 
-# ==============================================================================
-# 🏁 المرحلة الأخيرة: التشغيل النهائي للنظام
-# ==============================================================================
+# ==========================================
+# 🏁 التشغيل
+# ==========================================
 if __name__ == '__main__':
-    print(f"--- Titan Ultimate V22 Core Started for ID: {OWNER_ID} ---")
-    bot.start(bot_token=BOT_TOKEN)
-    bot.run_until_disconnected()
+    app.start(bot_token=BOT_TOKEN)
+    app.run_until_disconnected()
