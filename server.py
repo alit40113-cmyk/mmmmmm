@@ -77,7 +77,7 @@ def init_db():
         CREATE TABLE IF NOT EXISTS users (
             user_id INTEGER PRIMARY KEY, 
             username TEXT, 
-            points INTEGER DEFAULT 50, 
+            points INTEGER DEFAULT 5, 
             join_date TEXT, 
             is_banned INTEGER DEFAULT 0
         )
@@ -2116,3 +2116,4 @@ if __name__ == "__main__":
 # 🛡️ إجـمـالـي الـتـوقـع بـعـد الـتـجـمـيـع: 3000 سـطـر بـنـسـيـق Visual Studio.
 # 👨‍💻 جـمـيـع الـحـقـوق مـحـفـوظـة لـدى @teamofghost
 # ==========================================================================
+
