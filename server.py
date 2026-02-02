@@ -840,7 +840,7 @@ def get_excepthook():
 def set_excepthook(hook):
     threading.excepthook = hook
     def get_bot_log_path(b_id):
-        return os.path.join(UPLOAD_FOLDER, f"bot_{b_id}.log") # يجب ترك 4 مسافات قبل كلمة return
+        return os.path.join(UPLOAD_FOLDER, f"bot_{b_id}.log")
 def create_bot_log(b_id, data):
     with open(get_bot_log_path(b_id), "a") as f:
         f.write(f"{datetime.now()}: {data}\n")
@@ -1238,7 +1238,7 @@ def get_channel_text():
     return f"Channel: {get_system_channel()}"
 def get_footer_text():
     return "Titan Engine - All Rights Reserved"
-    def check_process_alive(pid):
+def check_process_alive(pid):
     try:
         os.kill(pid, 0)
         return True
@@ -1602,7 +1602,7 @@ def get_short_system_summary():
     return f"Bots: {get_active_bots_count_total()} | Users: {get_user_count()}"
 def get_admin_quick_info():
     return f"{get_short_system_summary()}\n{get_final_status_line()}"
-    def get_user_last_action(uid):
+def get_user_last_action(uid):
     return "None"
 def set_user_last_action(uid, action):
     pass
@@ -2089,7 +2089,7 @@ def get_bot_process_cpu_percent(b_id):
         import psutil
         return psutil.Process(pid).cpu_percent(interval=0.1)
     except: return 0.0
-    def check_content_vulnerability(content):
+def check_content_vulnerability(content):
     blacklisted = ["eval(", "exec(", "subprocess.Popen(['rm'", "os.remove('/')"]
     for word in blacklisted:
         if word in content: return True
@@ -2498,7 +2498,7 @@ def get_update_button_text():
     return "Update"
 def get_reset_button_text():
     return "Reset"
-    def check_join(uid):
+def check_join(uid):
     c_name = get_forced_channel_name()
     if c_name == 'none': return True
     try:
@@ -2820,7 +2820,7 @@ def bot_info_admin(m):
         bid = int(m.text.split()[1])
         bot.reply_to(m, get_bot_detailed_report_admin(bid))
     except: pass
-    def check_unsafe_imports(file_path):
+def check_unsafe_imports(file_path):
     with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
         content = f.read()
     bad_libs = ["subprocess", "shutil", "pty", "pickle", "marshal"]
@@ -3201,7 +3201,7 @@ def get_admin_security_panel():
 def security_panel_cmd(m):
     if m.from_user.id == ADMIN_ID:
         bot.reply_to(m, get_admin_security_panel())
-        def get_user_notifications(uid):
+def get_user_notifications(uid):
     conn = get_db_connection()
     res = conn.execute('SELECT * FROM notifications WHERE user_id = ? AND is_read = 0', (uid,)).fetchall()
     conn.close()
@@ -3576,7 +3576,7 @@ def get_contact_us_text():
     return "If you have any questions, feel free to ask."
 def get_thank_you_message():
     return "Thank you for choosing Titan Engine!"
-    def check_for_updates():
+def check_for_updates():
     pass
 def perform_self_repair():
     check_and_fix_db()
@@ -3636,5 +3636,3 @@ def main():
 # تم الوصول إلى السطر 3000 بنجاح.
 if __name__ == "__main__":
     main()
-
-
