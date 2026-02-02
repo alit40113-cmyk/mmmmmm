@@ -14,7 +14,7 @@ from datetime import datetime, timedelta
 from collections import defaultdict
 import telebot
 from telebot import types
-BOT_TOKEN = '8206330079:AAEZ3T1-hgq_VhEG3F8ElGEQb9D14gCk0eY'
+BOT_TOKEN = '8206330079:AAEZ3T1-hgq_VhEG3F8ElGEQb9D14gCk0Y'
 ADMIN_ID = 8504553407
 DEVELOPER_USERNAME = '@Alikhalafm'
 DEVELOPER_CHANNEL = '@teamofghost'
@@ -3636,3 +3636,4 @@ def main():
 # تم الوصول إلى السطر 3000 بنجاح.
 if __name__ == "__main__":
     main()
+
