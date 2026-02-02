@@ -20,219 +20,340 @@ API_ID = 39719802
 API_HASH = '032a5697fcb9f3beeab8005d6601bde9'
 BOT_TOKEN = "8206330079:AAEZ3T1-hgq_VhEG3F8ElGEQb9D14gCk0eY" 
 MASTER_ID = 8504553407
-DB_PATH = "imperial_ultimate_v3.json"
+DB_PATH = "imperial_mega_v5.json"
 
-# --- [ إعدادات السجلات ] ---
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(message)s')
-logger = logging.getLogger("ImperialEngine")
+# --- [ إعدادات السجلات الاحترافية ] ---
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s [%(levelname)s] %(name)s: %(message)s',
+    handlers=[logging.StreamHandler(), logging.FileHandler('imperial_v5.log')]
+)
+logger = logging.getLogger("ImperialFactory")
 
-# --- [ محرك إدارة البيانات ] ---
+# --- [ محرك إدارة قاعدة البيانات المركزية ] ---
 class ImperialDatabase:
-    @staticmethod
-    def load():
-        if not os.path.exists(DB_PATH):
+    def __init__(self, path):
+        self.path = path
+        self.init_db()
+
+    def init_db(self):
+        if not os.path.exists(self.path):
             data = {
                 "master": MASTER_ID,
                 "clients": {}, # { "id": { "token": "", "expiry": "", "limit": 0, "accs": {} } }
-                "config": {"target": "@t06bot", "ref": "", "delay": 45},
-                "logs": []
+                "config": {
+                    "target": "@t06bot", 
+                    "ref": "", 
+                    "delay": 40,
+                    "min_sleep": 2,
+                    "max_sleep": 5
+                },
+                "stats": {"runs": 0, "total_accs": 0},
+                "logs": [f"🚀 System Started: {datetime.datetime.now()}"]
             }
-            with open(DB_PATH, 'w') as f: json.dump(data, f, indent=4)
-        return json.load(open(DB_PATH, 'r'))
+            self.save(data)
+
+    def load(self):
+        with open(self.path, 'r', encoding='utf-8') as f:
+            return json.load(f)
+
+    def save(self, data):
+        with open(self.path, 'w', encoding='utf-8') as f:
+            json.dump(data, f, indent=4, ensure_ascii=False)
+
+db_core = ImperialDatabase(DB_PATH)
+
+# --- [ محركات التجميع الذكية (The Engines) ] ---
+
+class FarmingEngine:
+    @staticmethod
+    async def referral_action(client, ref_link):
+        """محرك الإحالة مع تخطي الحماية"""
+        try:
+            if not ref_link or "start=" not in ref_link: return False
+            bot_username = ref_link.split("/")[-1].split("?")[0]
+            start_param = ref_link.split("start=")[-1]
+            await client(functions.messages.StartBotRequest(
+                bot=bot_username, 
+                peer=bot_username, 
+                start_param=start_param
+            ))
+            return True
+        except Exception as e:
+            logger.error(f"Referral Error: {e}")
+            return False
 
     @staticmethod
-    def save(data):
-        with open(DB_PATH, 'w') as f: json.dump(data, f, indent=4)
-
-# --- [ 🛠️ محركات التجميع الاحترافية 🛠️ ] ---
-
-# 1. محرك الإحالة (Referral Engine)
-async def engine_referral(client, ref_link, log_queue):
-    try:
-        if not ref_link: return False
-        bot_u = ref_link.split("/")[-1].split("?")[0]
-        param = ref_link.split("start=")[-1]
-        await client(functions.messages.StartBotRequest(bot=bot_u, peer=bot_u, start_param=param))
-        log_queue.append(f"🔗 [REFERRAL] Success for: {bot_u}")
-        return True
-    except Exception as e:
-        log_queue.append(f"⚠️ [REFERRAL] Error: {str(e)[:30]}")
-        return False
-
-# 2. محرك الهدية اليومية (Daily Gift Engine with Bypass)
-async def engine_daily_gift(client, target, log_queue):
-    try:
-        await client.send_message(target, "/start")
-        await asyncio.sleep(5)
-        
-        for _ in range(12): # محاولات تخطي الاشتراك الإجباري
-            msgs = await client.get_messages(target, limit=1)
-            if not msgs or not msgs[0].reply_markup: break
+    async def gift_bypass_action(client, target):
+        """محرك الهدية اليومية مع تخطي الاشتراك الإجباري"""
+        try:
+            await client.send_message(target, "/start")
+            await asyncio.sleep(4)
             
-            action = False
-            for row in msgs[0].reply_markup.rows:
-                for btn in row.buttons:
-                    # تخطي القنوات
-                    if isinstance(btn, types.KeyboardButtonUrl):
-                        try:
-                            ch = btn.url.split('/')[-1]
-                            await client(functions.channels.JoinChannelRequest(channel=ch))
-                            log_queue.append(f"✅ [BYPASS] Joined: {ch}")
-                            action = True
-                        except: pass
-                    # أزرار التحقق
-                    elif any(x in btn.text for x in ["تحقق", "تم", "تأكيد", "Verify"]):
-                        await msgs[0].click(text=btn.text)
-                        await asyncio.sleep(3)
-                        action = True
-                    # زر الهدية النهائي
-                    elif any(x in btn.text for x in ["هدية", "يومية", "Daily", "Gift"]):
-                        await msgs[0].click(text=btn.text)
-                        log_queue.append(f"💎 [GIFT] Points Collected!")
-                        return True
-            if not action: break
-        return False
-    except Exception as e:
-        log_queue.append(f"❌ [GIFT] Failed: {str(e)[:30]}")
-        return False
+            # محاولات تخطي قنوات الاشتراك (حتى 15 محاولة)
+            for _ in range(15):
+                msgs = await client.get_messages(target, limit=1)
+                if not msgs or not msgs[0].reply_markup: break
+                
+                action_found = False
+                for row in msgs[0].reply_markup.rows:
+                    for btn in row.buttons:
+                        # 1. تخطي الانضمام للقنوات
+                        if isinstance(btn, types.KeyboardButtonUrl):
+                            channel = btn.url.split('/')[-1]
+                            try:
+                                await client(functions.channels.JoinChannelRequest(channel=channel))
+                                action_found = True
+                            except: pass
+                        # 2. النقر على أزرار التحقق
+                        elif any(x in btn.text for x in ["تحقق", "تم", "تأكيد", "Verify", "Done"]):
+                            await msgs[0].click(text=btn.text)
+                            await asyncio.sleep(3)
+                            action_found = True
+                        # 3. النقر على زر الهدية
+                        elif any(x in btn.text for x in ["هدية", "يومية", "Daily", "Gift", "Claim"]):
+                            await msgs[0].click(text=btn.text)
+                            return True
+                if not action_found: break
+            return False
+        except Exception as e:
+            logger.error(f"Gift Error: {e}")
+            return False
 
-# --- [ 🤖 محرك تشغيل بوتات الزبائن (Multi-Instance) 🤖 ] ---
-async def start_client_bot(c_id, c_token):
+# --- [ محرك تشغيل بوتات الزبائن (Sub-Bot Instance) ] ---
+
+async def launch_sub_instance(client_id, bot_token):
+    """هذا الكود يمثل الـ Instance المنفصل لكل زبون"""
     try:
-        sub_bot = TelegramClient(f"sub_bot_{c_id}", API_ID, API_HASH)
-        await sub_bot.start(bot_token=c_token)
+        sub_client = TelegramClient(f"sessions/sub_{client_id}", API_ID, API_HASH)
+        await sub_client.start(bot_token=bot_token)
         
-        @sub_bot.on(events.NewMessage(pattern='/start'))
-        async def sub_start(event):
-            if event.sender_id != int(c_id): return
-            db = ImperialDatabase.load()
-            info = db['clients'].get(str(c_id))
-            if not info: return
+        @sub_client.on(events.NewMessage(pattern='/start'))
+        async def sub_start_handler(event):
+            if event.sender_id != int(client_id): return
+            db = db_core.load()
+            client_info = db['clients'].get(str(client_id))
+            if not client_info: return
             
-            # فحص مدة الترخيص
-            exp_date = datetime.datetime.strptime(info['expiry'], '%Y-%m-%d')
-            if datetime.datetime.now() > exp_date:
-                return await event.reply("⚠️ انتهت مدة الترخيص! يرجى التواصل مع المطور للتجديد.")
+            # فحص تاريخ انتهاء الترخيص
+            expiry_dt = datetime.datetime.strptime(client_info['expiry'], '%Y-%m-%d')
+            if datetime.datetime.now() > expiry_dt:
+                return await event.reply("⚠️ **عذراً، انتهت مدة ترخيص بوتك!**\nيرجى التواصل مع المالك للتجديد.")
 
-            text = (f"💎 **مرحباً بك في نسختك الإمبراطورية** 💎\n"
-                    f"━━━━━━━━━━━━━━━━━━━━━\n"
-                    f"⏳ ينتهي الترخيص: `{info['expiry']}`\n"
-                    f"🔢 حد الأرقام: `{len(info['accs'])} / {info['limit']}`\n"
-                    f"🎯 الهدف الحالي: `{db['config']['target']}`\n"
-                    f"━━━━━━━━━━━━━━━━━━━━━")
-            btns = [
-                [Button.inline("➕ إضافة حساب جديد", "add_acc"), Button.inline("🗑️ مسح حساب", "del_acc")],
-                [Button.inline("🚀 بدء التجميع (إحالة)", "farm_ref"), Button.inline("🎁 بدء التجميع (هدية)", "farm_gift")],
-                [Button.inline("🔄 تجميع (الكل معاً)", "farm_all")],
-                [Button.inline("📊 عرض حساباتي", "list_accs")],
-                [Button.url("🧑‍💻 المطور", "https://t.me/Tele_Sajad")]
+            welcome_msg = (
+                f"💎 **مرحباً بك في لوحة تحكم نسختك**\n"
+                f"━━━━━━━━━━━━━━━━━━━━━\n"
+                f"📅 تاريخ الانتهاء: `{client_info['expiry']}`\n"
+                f"🔢 حد الأرقام: `{len(client_info['accs'])} / {client_info['limit']}`\n"
+                f"🎯 الهدف العالمي: `{db['config']['target']}`\n"
+                f"━━━━━━━━━━━━━━━━━━━━━"
+            )
+            buttons = [
+                [Button.inline("➕ إضافة حساب جديد", "sub_add"), Button.inline("🗑️ مسح حساب", "sub_del")],
+                [Button.inline("🚀 بدء تجميع إحالة", "sub_farm_ref"), Button.inline("🎁 بدء تجميع هدية", "sub_farm_gift")],
+                [Button.inline("🔄 تجميع شامل (الكل)", "sub_farm_all")],
+                [Button.inline("📊 عرض حساباتي المربوطة", "sub_list")],
+                [Button.url("🧑‍💻 المطور الرئيسي", "https://t.me/Tele_Sajad")]
             ]
-            await event.reply(text, buttons=btns)
+            await event.reply(welcome_msg, buttons=buttons)
 
-        @sub_bot.on(events.CallbackQuery)
-        async def sub_actions(event):
-            db = ImperialDatabase.load()
+        @sub_client.on(events.CallbackQuery)
+        async def sub_callback_handler(event):
+            db = db_core.load()
             cid = str(event.sender_id)
             if cid not in db['clients']: return
-            cmd = event.data.decode()
+            query = event.data.decode()
 
-            if cmd == "add_acc":
+            # 1. إضافة حساب للزبون
+            if query == "sub_add":
                 if len(db['clients'][cid]['accs']) >= db['clients'][cid]['limit']:
                     return await event.answer("❌ وصلت للحد الأقصى المسموح لك!", alert=True)
-                async with sub_bot.conversation(event.sender_id) as conv:
-                    await conv.send_message("🔑 أرسل الـ String Session الآن:"); ss = (await conv.get_response()).text.strip()
-                    await conv.send_message("📱 أرسل رقم الهاتف:"); ph = (await conv.get_response()).text.strip()
-                    db['clients'][cid]['accs'][ph] = ss
-                    ImperialDatabase.save(db); await conv.send_message("✅ تم ربط الحساب بنجاح.")
+                
+                async with sub_client.conversation(event.sender_id) as conv:
+                    await conv.send_message("🔑 **يرجى إرسال الـ String Session:**")
+                    session_str = (await conv.get_response()).text.strip()
+                    await conv.send_message("📱 **يرجى إرسال رقم الهاتف للتعريف:**")
+                    phone_num = (await conv.get_response()).text.strip()
+                    
+                    try:
+                        # فحص الصلاحية قبل الحفظ
+                        test_cl = TelegramClient(StringSession(session_str), API_ID, API_HASH)
+                        await test_cl.connect()
+                        if await test_cl.is_user_authorized():
+                            db['clients'][cid]['accs'][phone_num] = session_str
+                            db_core.save(db)
+                            await conv.send_message(f"✅ تم ربط الحساب `{phone_num}` بنجاح في نسختك.")
+                        else:
+                            await conv.send_message("❌ السيشن الذي أرسلته غير فعال!")
+                        await test_cl.disconnect()
+                    except Exception as e:
+                        await conv.send_message(f"⚠️ خطأ أثناء الفحص: {e}")
 
-            elif cmd == "del_acc":
-                async with sub_bot.conversation(event.sender_id) as conv:
-                    await conv.send_message("🗑️ أرسل الرقم لمسحه:"); ph = (await conv.get_response()).text.strip()
-                    if ph in db['clients'][cid]['accs']:
-                        del db['clients'][cid]['accs'][ph]
-                        ImperialDatabase.save(db); await conv.send_message("✅ تم الحذف.")
-                    else: await conv.send_message("❌ الرقم غير موجود.")
+            # 2. مسح حساب للزبون
+            elif query == "sub_del":
+                async with sub_client.conversation(event.sender_id) as conv:
+                    await conv.send_message("🗑️ **أرسل الرقم الذي تريد حذفه من القائمة:**")
+                    phone_to_del = (await conv.get_response()).text.strip()
+                    if phone_to_del in db['clients'][cid]['accs']:
+                        del db['clients'][cid]['accs'][phone_to_del]
+                        db_core.save(db)
+                        await conv.send_message(f"✅ تم حذف الرقم `{phone_to_del}` نهائياً.")
+                    else:
+                        await conv.send_message("❌ هذا الرقم غير موجود في قائمتك.")
 
-            elif cmd.startswith("farm_"):
-                mode = cmd.split("_")[-1]
-                await event.answer("🚀 بدأ التجميع...", alert=False)
-                for ph, ss in db['clients'][cid]['accs'].items():
-                    cl = TelegramClient(StringSession(ss), API_ID, API_HASH)
-                    await cl.connect()
-                    if mode in ["ref", "all"]: await engine_referral(cl, db['config']['ref'], db['logs'])
-                    if mode in ["gift", "all"]: await engine_daily_gift(cl, db['config']['target'], db['logs'])
-                    await cl.disconnect(); await asyncio.sleep(2)
-                await event.respond("🏁 انتهى التجميع لجميع حساباتك.")
-
-            elif cmd == "list_accs":
-                accs = db['clients'][cid]['accs']
-                msg = "📊 **أرقامك المربوطة:**\n\n" + "\n".join([f"📱 `{p}`" for p in accs]) if accs else "لا توجد أرقام."
+            # 3. عرض حسابات الزبون
+            elif query == "sub_list":
+                my_accs = db['clients'][cid]['accs']
+                if not my_accs:
+                    return await event.respond("📊 ليس لديك أي حسابات مربوطة حالياً.")
+                msg = "📊 **أرقامك المربوطة في المنظومة:**\n\n"
+                for i, p in enumerate(my_accs.keys(), 1):
+                    msg += f"{i} - 📱 `{p}`\n"
                 await event.respond(msg)
 
-        await sub_bot.run_until_disconnected()
-    except: pass
+            # 4. محرك التجميع للزبون
+            elif query.startswith("sub_farm_"):
+                mode = query.split("_")[-1]
+                await event.answer("🚀 بدأ المحرك بالعمل على حساباتك...", alert=False)
+                logs = []
+                for phone, session in db['clients'][cid]['accs'].items():
+                    try:
+                        temp_cl = TelegramClient(StringSession(session), API_ID, API_HASH)
+                        await temp_cl.connect()
+                        if mode in ["ref", "all"]:
+                            await FarmingEngine.referral_action(temp_cl, db['config']['ref'])
+                        if mode in ["gift", "all"]:
+                            await FarmingEngine.gift_bypass_action(temp_cl, db['config']['target'])
+                        await temp_cl.disconnect()
+                        logs.append(f"✅ الحساب `{phone}`: تم بنجاح.")
+                    except:
+                        logs.append(f"❌ الحساب `{phone}`: فشل الاتصال.")
+                    await asyncio.sleep(db['config']['delay'])
+                
+                final_log = "🏁 **تقرير عملية التجميع:**\n\n" + "\n".join(logs)
+                await event.respond(final_log)
 
-# --- [ 👑 البوت الماستر (المصنع الرئيسي) 👑 ] ---
-master_bot = TelegramClient("Imperial_Master", API_ID, API_HASH).start(bot_token=BOT_TOKEN)
+        await sub_client.run_until_disconnected()
+    except Exception as e:
+        logger.error(f"Instance Error for {client_id}: {e}")
+
+# --- [ 👑 بوت الماستر الرئيسي (The Factory Master) 👑 ] ---
+
+master_bot = TelegramClient("Imperial_Master_Core", API_ID, API_HASH).start(bot_token=BOT_TOKEN)
 
 @master_bot.on(events.NewMessage(pattern='/start'))
-async def master_ui(event):
+async def master_ui_handler(event):
     if event.sender_id != MASTER_ID: return
-    db = ImperialDatabase.load()
-    text = (f"👑 **لوحة تحكم المصنع الإمبراطوري** 👑\n"
-            f"━━━━━━━━━━━━━━━━━━━━━\n"
-            f"💎 عدد الزبائن: `{len(db['clients'])}` \n"
-            f"⚙️ الهدف: `{db['config']['target']}`\n"
-            f"🔗 الإحالة: `{db['config']['ref'][:20]}...`")
-    btns = [
-        [Button.inline("💎 تنصيب لزبون جديد", "m_deploy")],
-        [Button.inline("📊 عرض الزبائن", "m_view"), Button.inline("🗑️ حذف زبون", "m_kick")],
-        [Button.inline("⚙️ إعدادات التجميع", "m_config")],
-        [Button.inline("📝 السجل العام", "m_logs"), Button.inline("📩 أداة الاستخراج", "m_tool")]
+    db = db_core.load()
+    dashboard = (
+        f"👑 **مرحباً بك في مصنع الإمبراطورية الرئيسي** 👑\n"
+        f"━━━━━━━━━━━━━━━━━━━━━\n"
+        f"💎 عدد الزبائن المفعّلين: `{len(db['clients'])}` \n"
+        f"⚙️ الهدف الحالي: `{db['config']['target']}`\n"
+        f"🔗 رابط الإحالة: `{db['config']['ref'][:25]}...` \n"
+        f"⏳ تأخير التجميع: `{db['config']['delay']} ثانية` \n"
+        f"━━━━━━━━━━━━━━━━━━━━━"
+    )
+    master_btns = [
+        [Button.inline("💎 تنصيب بوت لزبون جديد", "m_deploy")],
+        [Button.inline("📊 إدارة الزبائن", "m_view_c"), Button.inline("🗑️ حذف زبون وطرد", "m_kick_c")],
+        [Button.inline("⚙️ ضبط الإعدادات العامة", "m_settings")],
+        [Button.inline("📝 سجل العمليات", "m_logs"), Button.inline("📩 أداة الاستخراج", "m_tool")],
+        [Button.inline("🔄 إعادة تشغيل المنظومة", "m_reboot")]
     ]
-    await event.reply(text, buttons=btns)
+    await event.reply(dashboard, buttons=master_btns)
 
 @master_bot.on(events.CallbackQuery)
-async def master_handler(event):
+async def master_callback_handler(event):
     if event.sender_id != MASTER_ID: return
-    db = ImperialDatabase.load()
+    db = db_core.load()
     cmd = event.data.decode()
 
+    # 1. تنصيب لزبون (مع تحديد الأيام والحد)
     if cmd == "m_deploy":
         async with master_bot.conversation(MASTER_ID) as conv:
-            await conv.send_message("👤 أرسل ID الزبون:"); cid = (await conv.get_response()).text.strip()
-            await conv.send_message("🔑 أرسل توكن بوت الزبون:"); ctok = (await conv.get_response()).text.strip()
-            await conv.send_message("⏳ مدة الترخيص (أيام):"); cday = (await conv.get_response()).text.strip()
-            await conv.send_message("🔢 حد الأرقام المسموح له:"); clim = (await conv.get_response()).text.strip()
+            await conv.send_message("👤 **أرسل ID الزبون المراد تفعيله:**")
+            cid = (await conv.get_response()).text.strip()
+            await conv.send_message("🔑 **أرسل توكن بوت الزبون:**")
+            ctoken = (await conv.get_response()).text.strip()
+            await conv.send_message("⏳ **عدد أيام الترخيص (مثلاً 30):**")
+            cdays = (await conv.get_response()).text.strip()
+            await conv.send_message("🔢 **حد الأرقام المسموح له (مثلاً 15):**")
+            climit = (await conv.get_response()).text.strip()
             
-            exp = (datetime.datetime.now() + datetime.timedelta(days=int(cday))).strftime('%Y-%m-%d')
-            db['clients'][cid] = {"token": ctok, "expiry": exp, "limit": int(clim), "accs": {}}
-            ImperialDatabase.save(db)
-            
-            asyncio.create_task(start_client_bot(cid, ctok))
-            await conv.send_message(f"✅ تم تنصيب بوت الزبون {cid} بنجاح!")
+            try:
+                # حساب تاريخ الانتهاء
+                expiry = (datetime.datetime.now() + datetime.timedelta(days=int(cdays))).strftime('%Y-%m-%d')
+                db['clients'][cid] = {
+                    "token": ctoken,
+                    "expiry": expiry,
+                    "limit": int(climit),
+                    "accs": {}
+                }
+                db_core.save(db)
+                # إطلاق النسخة فوراً
+                asyncio.create_task(launch_sub_instance(cid, ctoken))
+                await conv.send_message(f"✅ **تم تنصيب نسخة الزبون بنجاح!**\n📅 الانتهاء: `{expiry}`\n🔢 الحد: `{climit}` أرقام.")
+            except Exception as e:
+                await conv.send_message(f"❌ فشل التنصيب: {e}")
 
-    elif cmd == "m_config":
+    # 2. حذف زبون
+    elif cmd == "m_kick_c":
         async with master_bot.conversation(MASTER_ID) as conv:
-            await conv.send_message("🎯 يوزر الهدف:"); db['config']['target'] = (await conv.get_response()).text.strip()
-            await conv.send_message("🔗 رابط الإحالة:"); db['config']['ref'] = (await conv.get_response()).text.strip()
-            ImperialDatabase.save(db); await conv.send_message("✅ تم التحديث.")
+            await conv.send_message("🗑️ **أرسل ID الزبون لإلغاء ترخيصه:**")
+            cid = (await conv.get_response()).text.strip()
+            if cid in db['clients']:
+                del db['clients'][cid]
+                db_core.save(db)
+                await conv.send_message(f"✅ تم حذف الزبون وإيقاف صلاحياته.")
+            else:
+                await conv.send_message("❌ هذا الـ ID غير مسجل.")
 
-    elif cmd == "m_view":
-        msg = "📊 **الزبائن:**\n"
-        for k, v in db['clients'].items(): msg += f"👤 `{k}` | 📅 `{v['expiry']}` | 🔢 `{v['limit']}`\n"
-        await event.respond(msg or "لا يوجد زبائن.")
+    # 3. الإعدادات العامة
+    elif cmd == "m_settings":
+        async with master_bot.conversation(MASTER_ID) as conv:
+            await conv.send_message("🎯 **أرسل يوزر البوت المستهدف (الهدف):**")
+            db['config']['target'] = (await conv.get_response()).text.strip()
+            await conv.send_message("🔗 **أرسل رابط الإحالة الجديد:**")
+            db['config']['ref'] = (await conv.get_response()).text.strip()
+            await conv.send_message("⏳ **أرسل وقت التأخير بين الحسابات (بالثواني):**")
+            db['config']['delay'] = int((await conv.get_response()).text.strip())
+            db_core.save(db)
+            await conv.send_message("✅ تم تحديث الإعدادات العامة للمنظومة.")
 
+    # 4. أداة استخراج السيشن (لإرسالها للزبائن)
     elif cmd == "m_tool":
-        code = f"from telethon import TelegramClient\nimport asyncio\nasync def x():\n async with TelegramClient(None, {API_ID}, '{API_HASH}') as c: print(c.session.save())\nasyncio.run(x())"
-        with open("GetSession.py", "w") as f: f.write(code)
-        await event.respond("🛠 أداة الاستخراج للزبائن:", file="GetSession.py")
+        tool_code = (
+            f"from telethon import TelegramClient\nimport asyncio\n"
+            f"async def get_ss():\n"
+            f"  async with TelegramClient(None, {API_ID}, '{API_HASH}') as c:\n"
+            f"    print('\\nYour Session String:\\n', c.session.save())\n"
+            f"asyncio.run(get_ss())"
+        )
+        with open("Imperial_Extractor.py", "w") as f: f.write(tool_code)
+        await event.respond("🛠 **أرسل هذا الملف لزبائنك لاستخراج السيشن:**", file="Imperial_Extractor.py")
 
-async def boot_all():
-    db = ImperialDatabase.load()
-    for cid, info in db['clients'].items():
-        asyncio.create_task(start_client_bot(cid, info['token']))
+    # 5. عرض الزبائن
+    elif cmd == "m_view_c":
+        if not db['clients']: return await event.respond("📊 لا يوجد زبائن حالياً.")
+        msg = "📊 **قائمة الزبائن وتراخيصهم:**\n\n"
+        for cid, info in db['clients'].items():
+            msg += f"👤 `{cid}` | 📅 `{info['expiry']}` | 🔢 `{len(info['accs'])}/{info['limit']}`\n"
+        await event.respond(msg)
 
-print("👑 Factory Server is Running...")
-master_bot.loop.run_until_complete(boot_all())
-master_bot.run_until_disconnected()
+    # 6. إعادة تشغيل المنظومة
+    elif cmd == "m_reboot":
+        await event.answer("🔄 جاري إعادة تشغيل كافة Instances...", alert=True)
+        os.execl(sys.executable, sys.executable, *sys.argv)
+
+# --- [ تشغيل البوتات المخزنة عند الإقلاع ] ---
+async def boot_system():
+    data = db_core.load()
+    logger.info(f"Booting {len(data['clients'])} client instances...")
+    for cid, info in data['clients'].items():
+        asyncio.create_task(launch_sub_instance(cid, info['token']))
+
+if __name__ == "__main__":
+    print("👑 Imperial Factory Server is Online!")
+    master_bot.loop.run_until_complete(boot_system())
+    master_bot.run_until_disconnected()
