@@ -2161,7 +2161,7 @@ def __get_projects_fallback__(uid):
     return __PROJECTS_FALLBACK__.get(uid, [])
 
 # ---- Projects button (exact format requested) ----
-@bot.message_handler(func=lambda m: m.text == "📁 مشاريعي")
+@bot.message_handler(func=lambda m: "مشاريعي" in m.text)
 def __projects_button__(msg):
     uid = msg.from_user.id
 
