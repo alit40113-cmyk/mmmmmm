@@ -2,3 +2,4 @@ pyTelegramBotAPI
 requests
 psutil
 cryptography
+speech_recognition
