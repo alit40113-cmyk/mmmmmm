@@ -2189,454 +2189,162 @@ def finalize_interface_module():
                 NEW_T = threading.Thread(target=getattr(self, f"launch_{T.name.lower()}_service"), name=T.name)
                 NEW_T.daemon = True
                 NEW_T.start()
+    # ==========================================================
+# السطر 2635: المحرك العملاق (TITAN FULL POWER ENGINE)
+# ==========================================================
+class TitanFinalExecutionEngine:
+    def __init__(self):
+        self.is_running = True
+        self.threads = []
+        self.start_timestamp = datetime.now()
+
+    # --- [ مصفوفة دوال الخدمات والنظام ] ---
+    
     def get_total_active_connections(self):
         return get_active_connections()
+
     def get_system_load_summary(self):
         return get_system_load_avg()
+
     def get_memory_footprint(self):
         return get_memory_usage_mb()
+
     def get_disk_health_status(self):
         return check_path_exists(str(PTH_ROOT))
+
     def emergency_db_repair(self):
         return DB_CTRL.check_db_health()
+
     def broadcast_system_message(self, text):
         broadcast_to_all_users(f"🚨 [SYSTEM UPDATE]: {text}")
+
     def get_api_endpoint_url(self):
         return f"http://{get_network_ip()}:5000/verify"
+
     def log_engine_event(self, event):
         LGR.info(f"ENGINE_EVENT: {event}")
+
     def set_running_state(self, state):
         self.is_running = state
+
     def get_thread_count(self):
         return len(self.threads)
+
     def get_active_thread_names(self):
         return [T.name for T in self.threads]
+
     def verify_all_directories(self):
         return verify_environment_structure()
+
     def trigger_manual_backup(self):
         create_backup_of_database()
         return True
+
     def clear_all_temp_data(self):
         clean_temp_storage()
+
     def get_os_report_full(self):
         return get_os_detailed_report()
+
     def get_python_env_info(self):
-        return {"version": PY_VER, "path": get_python_executable_path()}
+        return {"version": PY_VER, "path": sys.executable}
+
     def get_bot_identity(self):
         return get_bot_status_report()
+
     def send_heartbeat_to_admin(self):
-        send_admin_alert(f"Heartbeat: {self.get_engine_uptime_report()}")
+        send_admin_alert(f"Heartbeat Active: {datetime.now()}")
+
     def check_internet_connectivity(self):
         return check_internet_connection()
+
+    # --- [ مصفوفة دوال إحصائيات المعالج والذاكرة ] ---
+
     def get_process_id_engine(self):
-        return get_current_process_id()
-    def get_parent_process_id_engine(self):
-        return get_parent_process_id()
+        return os.getpid()
+
     def get_cpu_count_engine(self):
-        return get_cpu_count_logical()
+        return psutil.cpu_count()
+
     def get_ram_total_engine(self):
-        return get_mem_virtual_total()
+        return psutil.virtual_memory().total
+
     def get_ram_avail_engine(self):
-        return get_mem_virtual_available()
+        return psutil.virtual_memory().available
+
     def get_ram_used_engine(self):
-        return get_mem_virtual_used()
+        return psutil.virtual_memory().used
+
     def get_disk_total_engine(self):
-        return get_disk_total_space(str(PTH_ROOT))
+        return psutil.disk_usage('/').total
+
     def get_disk_free_engine(self):
-        return get_disk_free_space(str(PTH_ROOT))
+        return psutil.disk_usage('/').free
+
     def get_net_sent_engine(self):
-        return get_net_sent_bytes()
+        return psutil.net_io_counters().bytes_sent
+
     def get_net_recv_engine(self):
-        return get_net_recv_bytes()
-    def get_net_packets_sent_engine(self):
-        return get_net_packets_sent()
-    def get_net_packets_recv_engine(self):
-        return get_net_packets_recv()
-    def get_net_errors_engine(self):
-        return get_net_errin_count()
-    def get_battery_stats_engine(self):
-        return get_system_battery_info()
-    def get_temp_stats_engine(self):
-        return get_system_temp_info()
-    def get_fans_stats_engine(self):
-        return get_system_fans_info()
-    def get_boot_time_engine(self):
-        return get_boot_time_iso()
-    def get_cwd_engine(self):
-        return get_abs_path('.')
-    def get_user_name_engine(self):
-        return get_current_user_name()
-    def is_admin_engine(self):
-        return is_running_as_admin()
-    def get_env_vars_engine(self):
-        return get_os_env_all()
-    def get_sys_path_engine(self):
-        return get_sys_path_list()
-    def get_sys_platform_engine(self):
-        return get_sys_platform_str()
-    def get_sys_version_engine(self):
-        return get_version_info_tuple()
-    def get_sys_encoding_engine(self):
-        return get_sys_getdefaultencoding()
-    def get_sys_recursion_engine(self):
-        return get_sys_getrecursionlimit()
-    def get_sys_switch_interval_engine(self):
-        return get_sys_getswitchinterval()
-    def get_sys_allocated_blocks_engine(self):
-        return get_sys_getallocatedblocks()
-    def get_sys_sizeof_engine(self, obj):
-        return get_sys_getsizeof(obj)
-    def get_sys_refcount_engine(self, obj):
-        return get_sys_getrefcount(obj)
-    def get_uuid_node_engine(self):
-        return get_uuid_node()
-    def get_random_hex_token(self, n):
-        return generate_token_hex(n)
-    def get_random_bytes_token(self, n):
-        return generate_token_bytes(n)
-    def get_crypt_random_int(self, min, max):
-        return get_cryptographic_random_int(min, max)
+        return psutil.net_io_counters().bytes_recv
+
     def get_utc_now_engine(self):
-        return get_current_utc_time()
-    def parse_dt_engine(self, ds, fmt):
-        return parse_date_string(ds, fmt)
-    def format_dt_engine(self, dt, fmt):
-        return format_date_object(dt, fmt)
-    def get_dt_diff_engine(self, d1, d2):
-        return get_time_difference_seconds(d1, d2)
-    def check_leap_engine(self, year):
-        return is_leap_year(year)
-    def get_month_range_engine(self, y, m):
-        return get_month_range(y, m)
-    def get_weekday_name_engine(self, dt):
-        return get_weekday_name(dt)
-    def get_month_name_engine(self, mi):
-        return get_month_name(mi)
+        return datetime.utcnow()
+
     def sleep_engine(self, s):
-        sleep_system_seconds(s)
-    def get_perf_counter_engine(self):
-        return get_performance_counter()
-    def get_proc_time_engine(self):
-        return get_process_time()
-    def get_mono_time_engine(self):
-        return get_monotonic_time()
-    def get_local_ts_engine(self):
-        return get_local_time_struct()
-    def get_gm_ts_engine(self):
-        return get_gm_time_struct()
-    def get_tz_offset_engine(self):
-        return get_timezone_offset()
-    def get_tz_name_engine(self):
-        return get_timezone_name()
+        time.sleep(s)
+
+    # --- [ مصفوفة دوال التشفير والروابط ] ---
+
     def get_sha1_engine(self, data):
-        return get_hash_sha1(data)
+        return hashlib.sha1(data.encode()).hexdigest()
+
     def get_md5_engine(self, data):
-        return get_hash_md5(data)
-    def get_sha512_engine(self, data):
-        return get_hash_sha512(data)
-    def get_hmac_sha256_engine(self, key, msg):
-        return get_hmac_sha256(key, msg)
+        return hashlib.md5(data.encode()).hexdigest()
+
     def get_b64_enc_engine(self, data):
-        return encode_base64_string(data)
-    def get_b64_dec_engine(self, data):
-        return decode_base64_string(data)
+        return base64.b64encode(data.encode()).decode()
+
     def get_url_enc_engine(self, data):
-        return encode_url_string(data)
-    def get_url_dec_engine(self, data):
-        return decode_url_string(data)
-    def get_url_params_engine(self, url):
-        return get_url_params(url)
-    def get_file_name_engine(self, path):
-        return get_file_name_from_path(path)
-    def get_dir_name_engine(self, path):
-        return get_dir_name_from_path(path)
-    def get_path_ext_engine(self, path):
-        return split_path_ext(path)
-    def get_norm_path_engine(self, path):
-        return normalize_path_string(path)
-    def is_abs_path_engine(self, path):
-        return check_path_is_absolute(path)
-    def join_paths_engine(self, *parts):
-        return join_file_paths(*parts)
-    def get_proc_priority_engine(self):
-        return get_current_process_priority()
-    def get_cpu_perc_cores_engine(self):
-        return get_system_cpu_percent_per_core()
-    def get_cpu_stats_engine(self):
-        return get_system_cpu_stats()
-    def get_swap_mem_engine(self):
-        return get_system_mem_swap()
-    def get_net_io_per_nic_engine(self):
-        return get_network_io_per_interface()
-    def get_net_if_addrs_engine(self):
-        return get_network_if_addrs()
-    def get_net_if_stats_engine(self):
-        return get_network_if_stats()
-    def get_logged_users_engine(self):
-        return get_system_users_logged_in()
-    def pid_exists_engine(self, pid):
-        return check_process_exists_by_id(pid)
-    def get_all_pids_engine(self):
-        return get_all_pids()
-    def get_proc_dict_engine(self, pid):
-        return get_process_info_by_pid(pid)
-    def wait_proc_engine(self, pid):
-        wait_for_process_exit(pid)
-    def get_proc_children_engine(self, pid):
-        return get_process_children_recursive(pid)
-    def get_proc_files_engine(self, pid):
-        return get_process_open_files(pid)
-    def get_proc_conn_engine(self, pid):
-        return get_process_connections(pid)
-    def get_proc_mem_full_engine(self, pid):
-        return get_process_memory_full_info(pid)
-    def get_proc_io_engine(self, pid):
-        return get_process_io_counters(pid)
-    def get_proc_ctx_engine(self, pid):
-        return get_process_ctx_switches(pid)
-    def get_proc_handles_engine(self, pid):
-        return get_process_handle_count(pid)
-    def get_proc_uids_engine(self, pid):
-        return get_process_uids(pid)
-    def get_proc_gids_engine(self, pid):
-        return get_process_gids(pid)
-    def get_proc_tty_engine(self, pid):
-        return get_process_terminal(pid)
-    def get_proc_status_engine(self, pid):
-        return get_process_status(pid)
-    def get_proc_create_time_engine(self, pid):
-        return get_process_create_time(pid)
-    def get_proc_cmdline_engine(self, pid):
-        return get_process_cmdline(pid)
-    def get_proc_exe_engine(self, pid):
-        return get_process_exe_path(pid)
-    def get_proc_cwd_engine(self, pid):
-        return get_process_cwd(pid)
-    def get_proc_env_engine(self, pid):
-        return get_process_environ(pid)
-    def get_proc_threads_engine(self, pid):
-        return get_process_threads_info(pid)
-    def get_proc_affinity_engine(self, pid):
-        return get_process_cpu_affinity(pid)
-    def get_proc_maps_engine(self, pid):
-        return get_process_memory_maps(pid)
-    def get_proc_ionice_engine(self, pid):
-        return get_process_ionice(pid)
-    def get_proc_rlimit_engine(self, pid, res):
-        return get_process_rlimit(pid, res)
-    def get_proc_fds_engine(self, pid):
-        return get_process_num_fds(pid)
-    def suspend_proc_engine(self, pid):
-        suspend_process_by_id(pid)
-    def resume_proc_engine(self, pid):
-        resume_process_by_id(pid)
-    def kill_proc_by_name_engine(self, name):
-        kill_processes_by_name(name)
-    def get_battery_engine(self):
-        return get_system_battery_info()
-    def get_fans_engine(self):
-        return get_system_fans_info()
-    def get_temps_engine(self):
-        return get_system_temp_info()
-    def get_ctx_switches_engine(self):
-        return get_cpu_stats_ctx_switches()
-    def get_interrupts_engine(self):
-        return get_cpu_stats_interrupts()
-    def get_soft_int_engine(self):
-        return get_cpu_stats_soft_interrupts()
-    def get_syscalls_engine(self):
-        return get_cpu_stats_syscalls()
-    def get_vmem_total_engine(self):
-        return get_mem_virtual_total()
-    def get_vmem_avail_engine(self):
-        return get_mem_virtual_available()
-    def get_vmem_used_engine(self):
-        return get_mem_virtual_used()
-    def get_vmem_free_engine(self):
-        return get_mem_virtual_free()
-    def get_disk_total_path_engine(self, path):
-        return get_disk_total_space(path)
-    def get_disk_used_path_engine(self, path):
-        return get_disk_used_space(path)
-    def get_disk_free_path_engine(self, path):
-        return get_disk_free_space(path)
-    def get_disk_perc_path_engine(self, path):
-        return get_disk_percent_space(path)
-    def get_net_sent_bytes_engine(self):
-        return get_net_sent_bytes()
-    def get_net_recv_bytes_engine(self):
-        return get_net_recv_bytes()
-    def get_net_pkts_sent_engine(self):
-        return get_net_packets_sent()
-    def get_net_pkts_recv_engine(self):
-        return get_net_packets_recv()
-    def get_net_errin_engine(self):
-        return get_net_errin_count()
-    def get_net_errout_engine(self):
-        return get_net_errout_count()
-    def get_net_dropin_engine(self):
-        return get_net_dropin_count()
-    def get_net_dropout_engine(self):
-        return get_net_dropout_count()
-    def create_thread_engine(self, target, name):
-        return create_named_thread(target, name)
-    def get_active_threads_engine(self):
-        return get_all_active_threads()
-    def get_thread_ident_engine(self):
-        return get_current_thread_id()
-    def get_main_thread_engine(self):
-        return get_main_thread_object()
-    def create_lock_engine(self):
-        return create_lock_object()
-    def create_rlock_engine(self):
-        return create_rlock_object()
-    def create_event_engine(self):
-        return create_event_object()
-    def create_cond_engine(self):
-        return create_condition_object()
-    def create_sem_engine(self, val):
-        return create_semaphore_object(val)
-    def get_active_count_engine(self):
-        return get_active_thread_count()
-    def run_shell_engine(self, cmd):
-        return run_command_shell(cmd)
-    def run_popen_engine(self, cmd):
-        return run_command_popen(cmd)
-    def get_env_all_engine(self):
-        return get_os_env_all()
-    def get_recursion_lim_engine(self):
-        return get_python_recursion_limit()
-    def set_recursion_lim_engine(self, lim):
-        set_python_recursion_limit(lim)
-    def get_float_info_engine(self):
-        return get_float_info()
-    def get_int_info_engine(self):
-        return get_int_info()
-    def get_thread_info_engine(self):
-        return get_thread_info()
-    def get_hash_info_engine(self):
-        return get_hash_info()
-    def get_byte_order_engine(self):
-        return get_byte_order()
-    def get_api_ver_engine(self):
-        return get_api_version()
-    def get_ver_info_engine(self):
-        return get_version_info_tuple()
-    def is_64bit_engine(self):
-        return check_is_64bit_system()
-    def get_executable_engine(self):
-        return get_sys_executable()
-    def get_argv_engine(self):
-        return get_sys_argv_list()
-    def get_path_list_engine(self):
-        return get_sys_path_list()
-    def get_platform_engine(self):
-        return get_sys_platform_str()
-    def get_prefix_engine(self):
-        return get_sys_prefix_path()
-    def get_base_prefix_engine(self):
-        return get_sys_base_prefix()
-    def get_exec_prefix_engine(self):
-        return get_sys_exec_prefix()
-    def get_base_exec_prefix_engine(self):
-        return get_sys_base_exec_prefix()
-    def get_builtin_mods_engine(self):
-        return get_sys_builtin_module_names()
-    def get_copyright_engine(self):
-        return get_sys_copyright_str()
-    def get_hexversion_engine(self):
-        return get_sys_hexversion()
-    def get_implementation_engine(self):
-        return get_sys_implementation_info()
-    def get_modules_engine(self):
-        return get_sys_modules_dict()
-    def get_warnoptions_engine(self):
-        return get_sys_warnoptions_list()
-    def get_traceback_lim_engine(self):
-        return get_sys_traceback_limit()
-    def set_traceback_lim_engine(self, lim):
-        set_sys_traceback_limit(lim)
-    def get_fs_encoding_engine(self):
-        return get_sys_getfilesystemencoding()
-    def get_def_encoding_engine(self):
-        return get_sys_getdefaultencoding()
-    def get_recursion_limit_engine(self):
-        return get_sys_getrecursionlimit()
-    def set_recursion_limit_engine(self, lim):
-        set_sys_recursion_limit(lim)
-    def get_switch_interval_engine(self):
-        return get_sys_getswitchinterval()
-    def set_switch_interval_engine(self, interval):
-        set_sys_switch_interval(interval) # type: ignore
-    def get_profile_engine(self):
-        return get_sys_getprofile()
-    def set_profile_engine(self, func):
-        sys.setprofile(func)
-    def get_trace_engine(self):
-        return get_sys_gettrace()
-    def set_trace_engine(self, func):
-        sys.settrace(func)
-    def get_windows_version_engine(self):
-        return get_sys_getwindowsversion()
-    def get_asyncgen_hooks_engine(self):
-        return get_sys_get_asyncgen_hooks()
-    def set_asyncgen_hooks_engine(self, hooks):
-        sys.set_asyncgen_hooks(hooks)
-    def get_coro_origin_tracking_engine(self):
-        return get_sys_get_coroutine_origin_tracking_depth()
-    def set_coro_origin_tracking_engine(self, depth):
-        sys.set_coroutine_origin_tracking_depth(depth)
-    def intern_string_engine(self, s):
-        return get_sys_intern_string(s)
-    def get_allocated_blocks_engine(self):
-        return get_sys_getallocatedblocks()
-    def get_refcount_engine(self, obj):
-        return get_sys_getrefcount(obj)
-    def get_sizeof_engine(self, obj):
-        return get_sys_getsizeof(obj)
-    def is_finalizing_engine(self):
-        return get_sys_is_finalizing()
-    def audit_engine(self, event, *args):
-        get_sys_audit(event, *args)
-    def add_audit_hook_engine(self, hook):
-        add_sys_audit_hook(hook)
-    def breakpointhook_engine(self, *args, **kwargs):
-        get_sys_breakpointhook(*args, **kwargs)
-    def displayhook_engine(self, value):
-        get_sys_displayhook(value)
-    def excepthook_engine(self, type, value, traceback):
-        get_sys_excepthook(type, value, traceback)
-    def unraisablehook_engine(self, unraisable):
-        get_sys_unraisablehook(unraisable)
-    def get_stderr_engine(self):
-        return get_sys_stderr()
-    def get_stdin_engine(self):
-        return get_sys_stdin()
-    def get_stdout_engine(self):
-        return get_sys_stdout()
-    def get_orig_argv_engine(self):
-        return get_sys_orig_argv()
-    def get_platlibdir_engine(self):
-        return get_sys_platlibdir()
-    def get_stdlib_module_names_engine(self):
-        return get_sys_stdlib_module_names()
-    def get_flags_engine(self):
-        return get_sys_flags()
-    def get_dont_write_bytecode_engine(self):
-        return get_sys_dont_write_bytecode()
-    def set_dont_write_bytecode_engine(self, val):
-        set_sys_dont_write_bytecode(val)
-    def get_float_repr_style_engine(self):
-        return get_sys_float_repr_style()
-    def get_thread_info_struct_engine(self):
-        return get_sys_thread_info_struct()
-    def get_int_max_str_digits_engine(self):
-        return get_sys_int_max_str_digits()
-    def set_int_max_str_digits_engine(self, digits):
-        set_sys_int_max_str_digits(digits)
-    def finalize_engine_module(self):
-        LGR.info("Execution Engine finalized.")
+        return urllib.parse.quote(data)
+
+    # --- [ دوال التشغيل والتحكم بالمحرك ] ---
+
+    def start_all_systems(self):
+        try:
+            # تشغيل خيوط السيرفر والبوت
+            T1 = threading.Thread(target=run_api_server, name="API_THREAD")
+            T2 = threading.Thread(target=run_telebot_forever, name="BOT_THREAD")
+            
+            T1.daemon = True
+            T2.daemon = True
+            
+            T1.start()
+            T2.start()
+            
+            self.threads.extend([T1, T2])
+            
+            print(f"\n" + "█"*50)
+            print(f" 🔥 TITAN V37 FULL POWER ENGINE ONLINE 🔥")
+            print(f" [+] API Status: Running (Port 5000)")
+            print(f" [+] Bot Status: Active (Polling)")
+            print(f" [+] Features: {len([m for m in dir(self) if not m.startswith('__')])} Methods Loaded")
+            print(f" █"*50 + "\n")
+        except Exception as e:
+            print(f" [!] CRITICAL START ERROR: {e}")
+
+    def wait_for_termination(self):
+        try:
+            while self.is_running:
+                time.sleep(1)
+        except (KeyboardInterrupt, SystemExit):
+            print("\n [!] Shutting down Titan Full Engine...")
+            self.is_running = False
+
+# ==========================================================
+# السطر الأخير: أمر التشغيل العالمي (GLOBAL ENTRY POINT)
+# ==========================================================
 if __name__ == "__main__":
-    FINAL_ENGINE = TitanFinalExecutionEngine() # type: ignore
+    # تشغيل النظام المتكامل
+    FINAL_ENGINE = TitanFinalExecutionEngine()
     FINAL_ENGINE.start_all_systems()
     FINAL_ENGINE.wait_for_termination()
