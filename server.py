@@ -2348,3 +2348,159 @@ if __name__ == "__main__":
     FINAL_ENGINE = TitanFinalExecutionEngine()
     FINAL_ENGINE.start_all_systems()
     FINAL_ENGINE.wait_for_termination()
+# ===================== TELEGRAM BOT UI LAYER =====================
+DB = TitanDatabaseController()
+DB.create_admin_if_not_exists()
+
+bot = telebot.TeleBot(BOT_TOKEN, parse_mode="HTML")
+
+def main_menu():
+    kb = types.InlineKeyboardMarkup(row_width=2)
+    kb.add(
+        types.InlineKeyboardButton("📤 رفع مشروع", callback_data="upload"),
+        types.InlineKeyboardButton("📦 مشاريعي", callback_data="my_projects"),
+        types.InlineKeyboardButton("💰 نقاطي", callback_data="points"),
+        types.InlineKeyboardButton("📊 حالة السيرفر", callback_data="status")
+    )
+    return kb
+
+@bot.message_handler(commands=['start'])
+def start_handler(msg):
+    DB.register_new_user(msg.from_user.id, msg.from_user.username or "NO_NAME")
+    bot.send_message(
+        msg.chat.id,
+        "👋 أهلاً بك في نظام Titan Hosting\nاختر من الأزرار 👇",
+        reply_markup=main_menu()
+    )
+
+@bot.callback_query_handler(func=lambda c: c.data == "points")
+def cb_points(c):
+    pts = DB.get_user_points(c.from_user.id)
+    bot.answer_callback_query(c.id)
+    bot.send_message(c.message.chat.id, f"💰 نقاطك الحالية: <b>{pts}</b>")
+
+@bot.callback_query_handler(func=lambda c: c.data == "status")
+def cb_status(c):
+    bot.answer_callback_query(c.id)
+    txt = (
+        f"🖥 OS: {OS_NAME}\n"
+        f"🐍 Python: {PY_VER.split()[0]}\n"
+        f"📡 IP: {get_network_ip()}\n"
+        f"⏱ Uptime: {GUARD.get_uptime()}"
+    )
+    bot.send_message(c.message.chat.id, txt)
+
+@bot.callback_query_handler(func=lambda c: c.data == "my_projects")
+def cb_projects(c):
+    rows = DB.get_user_projects(c.from_user.id)
+    bot.answer_callback_query(c.id)
+    if not rows:
+        bot.send_message(c.message.chat.id, "📦 ما عندك أي مشاريع")
+        return
+    for r in rows:
+        bot.send_message(
+            c.message.chat.id,
+            f"📁 {r['file_name']}\n"
+            f"🔑 API: <code>{r['api_token']}</code>\n"
+            f"🔗 URL: {r['raw_url']}\n"
+            f"✅ مفعل: {bool(r['is_approved'])}"
+        )
+
+@bot.callback_query_handler(func=lambda c: c.data == "upload")
+def cb_upload(c):
+    bot.answer_callback_query(c.id)
+    bot.send_message(
+        c.message.chat.id,
+        "📤 أرسل الملف الآن (py / zip / txt / php / json)"
+    )
+
+@bot.message_handler(content_types=['document'])
+def file_handler(msg):
+    uid = msg.from_user.id
+    ext = get_file_extension(msg.document.file_name)
+    if not is_allowed_extension(ext):
+        bot.send_message(msg.chat.id, "❌ امتداد غير مسموح")
+        return
+
+    if not validate_filename_security(msg.document.file_name):
+        bot.send_message(msg.chat.id, "❌ اسم الملف غير آمن")
+        return
+
+    if DB.is_user_banned(uid):
+        bot.send_message(msg.chat.id, "⛔ حسابك محظور")
+        return
+
+    pts = DB.get_user_points(uid)
+    if not validate_points_transaction(pts, DAILY_COST):
+        bot.send_message(msg.chat.id, "❌ نقاطك غير كافية")
+        return
+
+    file_info = bot.get_file(msg.document.file_id)
+    local_path = PTH_PRJ / f"{uid}_{msg.document.file_name}"
+    downloaded = bot.download_file(file_info.file_path)
+    with open(local_path, "wb") as f:
+        f.write(downloaded)
+
+    token = generate_api_secret()
+    raw_url = f"http://server.local/{local_path.name}"
+    DB.create_hosting_request(uid, msg.document.file_name, token, raw_url, 30)
+    DB.deduct_points(uid, DAILY_COST)
+
+    bot.send_message(
+        msg.chat.id,
+        "⏳ تم إرسال المشروع للموافقة من قبل المالك"
+    )
+    bot.send_message(
+        ADMIN_ID,
+        f"🆕 مشروع جديد بانتظار الموافقة\n"
+        f"👤 المستخدم: {uid}\n"
+        f"📁 الملف: {msg.document.file_name}\n"
+        f"🔑 API: {token}"
+    )
+
+def run_bot():
+    LGR.info("Telegram bot started")
+    bot.infinity_polling(skip_pending=True)
+
+if __name__ == "__main__":
+    run_bot()
+# ===================== END BOT UI =====================
+
+# ===================== REAL RUN LINK APPEND (NO DELETION) =====================
+# Everything above is UNTOUCHED. This section only ADDS real runnable links.
+
+from flask import Flask, request, jsonify, abort
+import threading, subprocess, sys, time
+
+app = Flask(__name__)
+
+@app.route("/run")
+def run_project_real():
+    token = request.args.get("token")
+    if not token:
+        abort(403)
+
+    row = DB.get_project_by_token(token)
+    if not row:
+        abort(403)
+
+    if not row["is_approved"]:
+        return jsonify({"status": "PENDING"}), 403
+
+    if row["expires_at"] < time.time():
+        return jsonify({"status": "EXPIRED"}), 403
+
+    path = row["file_path"]
+
+    if path.endswith(".py"):
+        subprocess.Popen([sys.executable, path])
+        return jsonify({"status": "RUNNING", "file": row["file_name"]})
+
+    return jsonify({"status": "OK", "file": row["file_name"]})
+
+def run_flask_real():
+    app.run(host="0.0.0.0", port=5000)
+
+threading.Thread(target=run_flask_real, daemon=True).start()
+
+# ===================== END REAL RUN LINK APPEND =====================
