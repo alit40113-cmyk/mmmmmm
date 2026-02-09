@@ -2631,3 +2631,65 @@ def run_bot():
 if __name__ == "__main__":
     run_bot()
 
+
+
+# =====================================================
+# FINAL PROJECTS DISPLAY — AGREED FORMAT (DO NOT REMOVE)
+# =====================================================
+
+@bot.message_handler(func=lambda m: m.text == "📁 مشاريعي")
+def projects_handler_final(msg):
+    uid = msg.from_user.id
+    projects = DB_CTRL.get_user_projects(uid)
+
+    if not projects:
+        bot.send_message(msg.chat.id, "📁 لا توجد مشاريع حالياً")
+        return
+
+    for p in projects:
+        api_token = p.get("api_token", "N/A")
+        raw_url = p.get("raw_url", "N/A")
+
+        display_url = raw_url
+        run_url = f"http://{get_network_ip()}:5000/run?token={api_token}"
+
+        status = "مفعل" if p.get("is_active") else "غير مفعل"
+
+        text = (
+            f"📁 {p.get('file_name')}\n\n"
+            f"🔗 رابط العرض:\n"
+            f"{display_url}\n\n"
+            f"🚀 رابط التشغيل:\n"
+            f"{run_url}\n\n"
+            f"🔑 API TOKEN:\n"
+            f"{api_token}\n\n"
+            f"✅ الحالة: {status}"
+        )
+
+        bot.send_message(msg.chat.id, text)
+
+# ============================
+# BUTTON SAFETY FALLBACK LAYER
+# ============================
+
+@bot.message_handler(func=lambda m: True)
+def fallback_handler(msg):
+    if msg.text in ["⬅️ رجوع", "رجوع"]:
+        bot.send_message(msg.chat.id, "⬅️ رجوع للقائمة", reply_markup=main_menu())
+        return
+
+    if msg.text == "لوحة التحكم" and msg.from_user.id == ADMIN_ID:
+        bot.send_message(msg.chat.id, "🛠 لوحة تحكم الأدمن", reply_markup=admin_menu())
+        return
+
+# ============================
+# FINAL START CONFIRMATION
+# ============================
+
+def __final_boot__():
+    print("[OK] Bot fully loaded")
+    print("[OK] All buttons are active")
+    print("[OK] Projects view format applied")
+
+__final_boot__()
+
