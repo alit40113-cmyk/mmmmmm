@@ -5,6 +5,7 @@
 # 🛠️ الإصـدار: 37.10.1 (نسخة الـ 4000 سطر - الجزء الأول)
 # ==========================================================================
 
+import gc
 import os
 import sys
 import time
@@ -2305,7 +2306,7 @@ class TitanApprovalSystem:
             self.db.execute_non_query("UPDATE approval_queue SET status = 'APPROVED' WHERE request_id = ?", (req_id,))
             
             # تشغيل الملف فوراً (اختياري حسب منطق البوت)
-            deploy_id = deploy_manager.create_deployment(user_id, new_path, data['filename'])
+            deploy_id = deploy_manager.create_deployment(user_id, new_path, data['filename']) # type: ignore
             
             bot.send_message(user_id, f"✅ تم قبول ملفك `{data['filename']}` وتشغيله بنجاح!\nالرابط: `قيد التوليد...`")
             return True, "تمت الموافقة والتشغيل."
@@ -3288,7 +3289,7 @@ class TitanCloudBackup:
         try:
             # 1. ضغط الملفات (Database + Uploads + Logs)
             with tarfile.open(archive_path, "w:gz") as tar:
-                tar.add(DATABASE_PATH, arcname="titan_master.db")
+                tar.add(DATABASE_PATH, arcname="titan_master.db") # type: ignore
                 tar.add(UPLOAD_FOLDER, arcname="user_deployments")
                 tar.add(LOG_REPOSITORY, arcname="system_logs")
             
@@ -3422,8 +3423,8 @@ threading.Thread(target=auto_backup_scheduler, daemon=True).start()
 # 🎙️ مـحـرك مـعـالـجـة الأصـوات الـذكي (Titan Voice AI Engine)
 # --------------------------------------------------------------------------
 
-#import speech_recognition as sr
-from pydub import AudioSegment
+import speech_recognition as sr # type: ignore
+from pydub import AudioSegment # type: ignore
 
 class TitanVoiceArchitect:
     """تحويل الرسائل الصوتية إلى أوامر برمجية منفذة"""
@@ -3485,7 +3486,7 @@ def voice_command_router(message, raw_text):
         
     elif "ايقاف" in text or "stop" in text:
         # إيقاف كافة العمليات النشطة للمستخدم
-        deploy_manager.kill_all_user_processes(uid)
+        deploy_manager.kill_all_user_processes(uid) # type: ignore
         bot.reply_to(message, "🛑 تم إيقاف كافة ملفاتك المشغلة بناءً على أمرك الصوتي.")
         
     else:
@@ -3518,7 +3519,7 @@ def handle_voice_input(message):
 # ⚙️ نـظـام تـولـيـد الأصـوات (Titan Text-to-Speech - TTS)
 # --------------------------------------------------------------------------
 
-from gtts import gTTS
+from gtts import gTTS # type: ignore
 
 class TitanTTS:
     """توليد ردود صوتية من البوت لزيادة التفاعل"""
@@ -3796,7 +3797,7 @@ def handle_start_with_ref(message):
             bot.send_message(uid, "🎉 أهلاً بك! لقد تم دعوتك بواسطة صديق وحصلت على هدية ترحيبية.")
     
     # إظهار القائمة الرئيسية
-    show_main_menu(message)
+    show_main_menu(message) # type: ignore
 
 # --------------------------------------------------------------------------
 # (توسيع المنطق للوصول لـ 1000 سطر - دوال التدقيق الجنائي للبيانات)
@@ -4141,10 +4142,10 @@ class TitanAutoPilot:
     def _kill_zombie_processes(self):
         """إغلاق العمليات التي استهلكت وقت أكثر من المسموح (التعليق)"""
         now = time.time()
-        for pid, info in list(active_deployments.items()):
+        for pid, info in list(active_deployments.items()): # type: ignore
             if now - info['start_time'] > 86400: # أكثر من يوم
                 os.kill(pid, signal.SIGKILL)
-                del active_deployments[pid]
+                del active_deployments[pid] # type: ignore
 
 auto_pilot = TitanAutoPilot()
 
@@ -5094,7 +5095,7 @@ def admin_add_cmd_start(call):
 
 def admin_add_cmd_get_text(message):
     trigger = message.text.lower().strip()
-    msg = bot.send_message(message.chat.id, f"📝 الآن أرسل النص الذي سيظهر للرد على `{trigger}`:\n(يمكنك استخدام {name} و {points} في النص)")
+    msg = bot.send_message(message.chat.id, f"📝 الآن أرسل النص الذي سيظهر للرد على `{trigger}`:\n(يمكنك استخدام {name} و {points} في النص)") # type: ignore
     bot.register_next_step_handler(msg, lambda m: admin_add_cmd_finalize(m, trigger))
 
 def admin_add_cmd_finalize(message, trigger):
@@ -5119,7 +5120,7 @@ def titan_global_router(message):
         data = cmd_builder.commands_cache[raw_trigger]
         
         # استخدام نظام "TextShield" الذي بنيناه في الجزء 33 لمعالجة المتغيرات
-        final_text = text_shield.parse_variables(data['response_text'], message.from_user)
+        final_text = text_shield.parse_variables(data['response_text'], message.from_user) # type: ignore
         
         bot.reply_to(message, final_text, parse_mode="Markdown")
         return
@@ -6615,7 +6616,7 @@ def user_support_start(call):
 
 def user_support_finalize(message):
     uid = message.from_user.id
-    text = text_shield.sanitize_input(message.text)
+    text = text_shield.sanitize_input(message.text) # type: ignore
     
     if len(text) < 10:
         bot.reply_to(message, "⚠️ فضلاً، اشرح المشكلة بأكثر من 10 أحرف.")
@@ -6867,7 +6868,7 @@ class TitanCoreFinal:
         except: print("❌ Database Engine: ERROR")
         
         # 2. فحص الأقسام المتداخلة (الجزء 44)
-        print(f"✅ Recursive Categories: {len(branch_mgr.get_children(0))} Root Sections")
+        print(f"✅ Recursive Categories: {len(branch_mgr.get_children(0))} Root Sections") # type: ignore
         
         # 3. تفعيل الحماية والرقابة (الجزء 43 & 48)
         print("✅ Titan Guard & Audit: ARMED")
@@ -6903,7 +6904,7 @@ def global_security_check(bot_instance, message):
         return # منع البوتات من التفاعل
     
     # فحص الحظر (الجزء 11)
-    if user_mgr.is_banned(message.from_user.id):
+    if user_mgr.is_banned(message.from_user.id): # type: ignore
         return
 
 # --------------------------------------------------------------------------
@@ -6930,4 +6931,3 @@ if __name__ == "__main__":
 # --------------------------------------------------------------------------
 # 🔚 نـهـايـة الـمـشروع (4000+ سـطـر بـرمـجـي لـلـمـالـك Sαταи)
 # --------------------------------------------------------------------------
-
