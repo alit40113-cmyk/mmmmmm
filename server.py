@@ -3423,7 +3423,7 @@ threading.Thread(target=auto_backup_scheduler, daemon=True).start()
 # 🎙️ مـحـرك مـعـالـجـة الأصـوات الـذكي (Titan Voice AI Engine)
 # --------------------------------------------------------------------------
 
-import speech_recognition as sr # type: ignore
+#import speech_recognition as sr # type: ignore
 from pydub import AudioSegment # type: ignore
 
 class TitanVoiceArchitect:
@@ -6931,3 +6931,4 @@ if __name__ == "__main__":
 # --------------------------------------------------------------------------
 # 🔚 نـهـايـة الـمـشروع (4000+ سـطـر بـرمـجـي لـلـمـالـك Sαταи)
 # --------------------------------------------------------------------------
+
