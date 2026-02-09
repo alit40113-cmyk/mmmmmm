@@ -2504,3 +2504,130 @@ def run_flask_real():
 threading.Thread(target=run_flask_real, daemon=True).start()
 
 # ===================== END REAL RUN LINK APPEND =====================
+
+
+# =====================
+# TELEGRAM BOT UI LAYER
+# =====================
+
+bot = telebot.TeleBot(BOT_TOKEN, parse_mode="HTML")
+
+def main_menu():
+    kb = types.ReplyKeyboardMarkup(resize_keyboard=True)
+    kb.row("📁 مشاريعي", "➕ رفع مشروع")
+    kb.row("💰 نقاطي", "⏳ طلباتي")
+    kb.row("ℹ️ معلومات")
+    return kb
+
+def admin_menu():
+    kb = types.ReplyKeyboardMarkup(resize_keyboard=True)
+    kb.row("✅ الموافقات", "📊 الإحصائيات")
+    kb.row("👥 المستخدمين", "⬅️ رجوع")
+    return kb
+
+@bot.message_handler(commands=['start'])
+def start_handler(msg):
+    uid = msg.from_user.id
+    uname = msg.from_user.username or "NO_USERNAME"
+    DB_CTRL.register_new_user(uid, uname)
+    bot.send_message(
+        uid,
+        f"👋 أهلاً بك\nالمطور: {DEVELOPER_TAG}",
+        reply_markup=main_menu()
+    )
+
+@bot.message_handler(func=lambda m: m.text == "💰 نقاطي")
+def points_handler(msg):
+    pts = DB_CTRL.get_user_points(msg.from_user.id)
+    bot.send_message(msg.chat.id, f"💰 نقاطك الحالية: <b>{pts}</b>")
+
+@bot.message_handler(func=lambda m: m.text == "📁 مشاريعي")
+def projects_handler(msg):
+    rows = DB_CTRL.get_user_projects(msg.from_user.id)
+    if not rows:
+        bot.send_message(msg.chat.id, "📂 لا توجد مشاريع")
+        return
+    text = "📁 مشاريعك:\n"
+    for r in rows:
+        text += f"- {r['file_name']} | فعال: {r['is_active']} | موافق: {r['is_approved']}\n"
+    bot.send_message(msg.chat.id, text)
+
+@bot.message_handler(func=lambda m: m.text == "➕ رفع مشروع")
+def upload_info(msg):
+    bot.send_message(
+        msg.chat.id,
+        "⬆️ أرسل اسم الملف + الرابط الخام + عدد الأيام بهذا الشكل:\n"
+        "<code>file.py|https://raw.url|7</code>"
+    )
+
+@bot.message_handler(func=lambda m: '|' in m.text and m.text.count('|') == 2)
+def create_project(msg):
+    try:
+        fname, url, days = msg.text.split('|')
+        uid = msg.from_user.id
+        cost = DAILY_COST * int(days)
+        pts = DB_CTRL.get_user_points(uid)
+        if pts < cost:
+            bot.send_message(msg.chat.id, "❌ نقاطك غير كافية")
+            return
+        token = generate_api_secret()
+        DB_CTRL.create_hosting_request(uid, fname, token, url, int(days))
+        DB_CTRL.deduct_points(uid, cost)
+        bot.send_message(
+            msg.chat.id,
+            f"✅ تم إنشاء الطلب\n🔑 API TOKEN:\n<code>{token}</code>\n⏳ بانتظار موافقة الأدمن"
+        )
+    except Exception as e:
+        bot.send_message(msg.chat.id, f"خطأ: {e}")
+
+@bot.message_handler(func=lambda m: m.text == "ℹ️ معلومات")
+def info_handler(msg):
+    rep = DB_CTRL.get_database_full_report()
+    bot.send_message(
+        msg.chat.id,
+        f"ℹ️ معلومات النظام\n"
+        f"👥 المستخدمين: {rep['users']}\n"
+        f"📁 المشاريع: {rep['projects']}\n"
+        f"✅ الفعالة: {rep['active']}"
+    )
+
+@bot.message_handler(func=lambda m: m.text == "⏳ طلباتي")
+def pending_handler(msg):
+    rows = DB_CTRL.get_user_projects(msg.from_user.id)
+    text = "⏳ حالة الطلبات:\n"
+    for r in rows:
+        text += f"{r['file_name']} ➜ موافقة: {r['is_approved']}\n"
+    bot.send_message(msg.chat.id, text)
+
+@bot.message_handler(func=lambda m: m.from_user.id == ADMIN_ID and m.text == "لوحة التحكم")
+def admin_panel(msg):
+    bot.send_message(msg.chat.id, "🛠 لوحة الأدمن", reply_markup=admin_menu())
+
+@bot.message_handler(func=lambda m: m.from_user.id == ADMIN_ID and m.text == "✅ الموافقات")
+def approve_list(msg):
+    rows = DB_CTRL.get_pending_projects()
+    if not rows:
+        bot.send_message(msg.chat.id, "لا توجد طلبات")
+        return
+    for r in rows:
+        kb = types.InlineKeyboardMarkup()
+        kb.add(types.InlineKeyboardButton("✅ موافقة", callback_data=f"APPROVE_{r['pid']}"))
+        bot.send_message(
+            msg.chat.id,
+            f"📁 {r['file_name']} | UID:{r['owner_id']}",
+            reply_markup=kb
+        )
+
+@bot.callback_query_handler(func=lambda c: c.data.startswith("APPROVE_"))
+def approve_cb(call):
+    pid = int(call.data.split("_")[1])
+    DB_CTRL.approve_project(pid)
+    bot.answer_callback_query(call.id, "تمت الموافقة")
+    bot.edit_message_text("✅ تمت الموافقة", call.message.chat.id, call.message.message_id)
+
+def run_bot():
+    bot.infinity_polling(skip_pending=True)
+
+if __name__ == "__main__":
+    run_bot()
+
