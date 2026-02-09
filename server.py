@@ -214,11 +214,20 @@ def start_command_handler(m):
         admin_btn = types.InlineKeyboardButton("⚙️ لـوحـة الإدارة", callback_data="admin_panel")
         markup.add(admin_btn)
         
+    # زر مشاريعي كزر لوحة (بدون كتابة نص)
+    reply_kb = types.ReplyKeyboardMarkup(resize_keyboard=True)
+    reply_kb.add(types.KeyboardButton("📁 مشاريعي"))
     bot.send_message(
         m.chat.id, 
         welcome_text, 
-        reply_markup=markup, 
+        reply_markup=reply_kb, 
         parse_mode="Markdown"
+    )
+    # إرسال الأزرار الإنلاين برسالة ثانية
+    bot.send_message(
+        m.chat.id,
+        "اختر من القائمة:",
+        reply_markup=markup
     )
 
 # ----------------------------------------------------------
@@ -2236,3 +2245,12 @@ def __single_add_project__(msg):
 # =====================================================
 # END ADDITION
 # =====================================================
+
+@bot.message_handler(func=lambda m: m.text == "📁 مشاريعي")
+def open_projects_from_keyboard(m):
+    class MockCallback:
+        def __init__(self, message):
+            self.from_user = message.from_user
+            self.message = message
+            self.id = None
+    show_user_hosted_bots(MockCallback(m))
