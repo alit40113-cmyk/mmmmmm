@@ -1273,7 +1273,7 @@ class TitanReportGenerator:
         )
         return report
 
-report_gen = TitanReportGenerator(db_engine)
+report_gen = TitanReportGenerator(db_master)
 
 @bot.callback_query_handler(func=lambda c: c.data == "adm_gen_report")
 def trigger_daily_report(call):
@@ -6930,3 +6930,4 @@ if __name__ == "__main__":
 # --------------------------------------------------------------------------
 # 🔚 نـهـايـة الـمـشروع (4000+ سـطـر بـرمـجـي لـلـمـالـك Sαταи)
 # --------------------------------------------------------------------------
+
