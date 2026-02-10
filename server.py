@@ -78,7 +78,7 @@ def start(m):
     txt, kb = main_kb(uid, m.from_user.first_name, user['points'])
     bot.send_message(m.chat.id, txt, reply_markup=kb)
 
-# --- [ 📤 دالة التنصيب الأصلية (بدون تغيير) ] ---
+# --- [ 📤 دالة التنصيب الأصلية ] ---
 def handle_upload(m):
     if not m.document or not m.document.file_name.endswith('.py'):
         bot.send_message(m.chat.id, "❌ أرسل ملف بايثون فقط.")
@@ -93,17 +93,24 @@ def handle_upload(m):
         types.InlineKeyboardButton("شهر (150ن)", callback_data=f"set_days_30_{rid}"))
     bot.send_message(m.chat.id, "🗓️ اختر مدة الاستضافة:", reply_markup=kb)
 
-# --- [ 🔗 معالجة الأزرار والتربيط الكامل ] ---
+# --- [ 🔗 معالجة الأزرار والتربيط الشامل ] ---
 @bot.callback_query_handler(func=lambda c: True)
 def router(c):
     uid, cid, mid = c.from_user.id, c.message.chat.id, c.message.message_id
     conn = get_db()
     user = conn.execute('SELECT * FROM users WHERE user_id = ?', (uid,)).fetchone()
 
-    if c.data == "nav_ins":
+    # القائمة والرجوع
+    if c.data == "back_home":
+        txt, kb = main_kb(uid, user['username'], user['points'])
+        bot.edit_message_text(txt, cid, mid, reply_markup=kb)
+
+    # تنصيب
+    elif c.data == "nav_ins":
         msg = bot.send_message(cid, "📤 أرسل ملف الأداة بصيغة .py:")
         bot.register_next_step_handler(msg, handle_upload)
 
+    # إدارة المشاريع
     elif c.data == "nav_projs":
         projs = conn.execute('SELECT * FROM projects WHERE user_id = ?', (uid,)).fetchall()
         kb = types.InlineKeyboardMarkup(row_width=2)
@@ -129,13 +136,14 @@ def router(c):
         conn.execute('DELETE FROM projects WHERE link_id = ?', (lid,))
         conn.commit()
         bot.answer_callback_query(c.id, "✅ تم حذف المشروع.")
-        # العودة لقائمة المشاريع بعد الحذف
+        # العودة للقائمة
         projs = conn.execute('SELECT * FROM projects WHERE user_id = ?', (uid,)).fetchall()
         kb = types.InlineKeyboardMarkup(row_width=2)
         for p in projs: kb.add(types.InlineKeyboardButton(f"📄 {p['name']}", callback_data=f"v_{p['link_id']}"))
         kb.add(types.InlineKeyboardButton("🔙 رجوع", callback_data="back_home"))
-        bot.edit_message_text("📂 مشاريعك الحالية:", cid, mid, reply_markup=kb)
+        bot.edit_message_text("📂 مشاريعك الحالية بعد الحذف:", cid, mid, reply_markup=kb)
 
+    # المحفظة والأكواد
     elif c.data == "nav_wall":
         txt = f"💳 **المحفظة**\n💰 رصيدك: `{user['points']}` نقطة"
         kb = types.InlineKeyboardMarkup(row_width=1).add(
@@ -144,6 +152,20 @@ def router(c):
             types.InlineKeyboardButton("🔙 رجوع", callback_data="back_home"))
         bot.edit_message_text(txt, cid, mid, reply_markup=kb)
 
+    elif c.data == "use_gift_code":
+        msg = bot.send_message(cid, "🎫 أرسل كود الشحن:")
+        bot.register_next_step_handler(msg, user_redeem_code)
+
+    # حالة السيرفر
+    elif c.data in ["nav_srv", "refresh_srv"]:
+        cpu, ram = psutil.cpu_percent(), psutil.virtual_memory().percent
+        txt = f"📡 **حالة السيرفر:**\n⚙️ المعالج: `{cpu}%`\n🧠 الرام: `{ram}%`"
+        kb = types.InlineKeyboardMarkup().add(types.InlineKeyboardButton("🔄 تحديث", callback_data="refresh_srv"),
+                                              types.InlineKeyboardButton("🔙 رجوع", callback_data="back_home"))
+        try: bot.edit_message_text(txt, cid, mid, reply_markup=kb)
+        except: pass
+
+    # لوحة الإدارة
     elif c.data == "nav_admin" and uid == ADMIN_ID:
         kb = types.InlineKeyboardMarkup(row_width=2).add(
             types.InlineKeyboardButton("📥 الطلبات", callback_data="adm_reqs"),
@@ -152,7 +174,7 @@ def router(c):
             types.InlineKeyboardButton("📊 الإحصائيات", callback_data="adm_stats"),
             types.InlineKeyboardButton("📢 إذاعة", callback_data="adm_bc"),
             types.InlineKeyboardButton("🔙 رجوع", callback_data="back_home"))
-        bot.edit_message_text("⚙️ لوحة الإدارة", cid, mid, reply_markup=kb)
+        bot.edit_message_text("⚙️ **لوحة التحكم العليا**", cid, mid, reply_markup=kb)
 
     elif c.data == "adm_reqs":
         reqs = conn.execute('SELECT * FROM requests').fetchall()
@@ -162,6 +184,12 @@ def router(c):
                 types.InlineKeyboardButton("✅ قبول", callback_data=f"acc_{r['req_id']}"),
                 types.InlineKeyboardButton("❌ رفض", callback_data=f"rej_{r['req_id']}"))
             bot.send_message(cid, f"🔔 طلب من: `{r['user_id']}`\n📄 ملف: `{r['file_name']}`\n📅 مدة: {r['days']} يوم", reply_markup=kb)
+
+    elif c.data.startswith("rej_"):
+        rid = c.data.split("_")[1]
+        conn.execute('DELETE FROM requests WHERE req_id = ?', (rid,))
+        conn.commit()
+        bot.edit_message_text("❌ تم الرفض وحذف الطلب.", cid, mid)
 
     elif c.data == "adm_stats":
         u = conn.execute('SELECT COUNT(*) FROM users').fetchone()[0]
@@ -180,10 +208,6 @@ def router(c):
         msg = bot.send_message(cid, "🎫 أرسل (نقاط مسافة عدد):")
         bot.register_next_step_handler(msg, admin_create_code)
 
-    elif c.data == "use_gift_code":
-        msg = bot.send_message(cid, "🎫 أرسل كود الشحن:")
-        bot.register_next_step_handler(msg, user_redeem_code)
-
     elif c.data.startswith("set_days_"):
         _, _, days, rid = c.data.split("_")
         conn.execute('UPDATE requests SET days = ? WHERE req_id = ?', (int(days), rid))
@@ -193,10 +217,6 @@ def router(c):
     elif c.data.startswith("acc_"):
         rid = c.data.split("_")[1]
         process_approval(rid, cid, mid)
-
-    elif c.data == "back_home":
-        txt, kb = main_kb(uid, user['username'], user['points'])
-        bot.edit_message_text(txt, cid, mid, reply_markup=kb)
 
     conn.close()
 
@@ -257,7 +277,7 @@ def process_approval(rid, cid, mid):
         else: bot.send_message(cid, "❌ رصيد ناقص.")
     conn.close()
 
-# --- [ تشغيل الـ Port ] ---
+# --- [ تشغيل الـ Port لـ Railway ] ---
 def run_api():
     port = int(os.environ.get("PORT", 5000))
     app.run(host='0.0.0.0', port=port)
