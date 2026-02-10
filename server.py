@@ -282,12 +282,14 @@ def user_redeem_code(m):
     conn.close()
 
 if __name__ == "__main__":
-    # 1. إعداد Flask للعمل في مسار (Thread) منفصل مع تفعيل تعدد المسارات
-    # threaded=True: تسمح بمعالجة طلبات الأداة الخارجية حتى لو كان البوت مشغولاً
+    # الحصول على المنفذ من النظام (Docker/Railway يحددونه تلقائياً)
+    app_port = int(os.environ.get("PORT", 5000))
+    
+    # 1. تشغيل Flask في مسار منفصل
     flask_thread = threading.Thread(
         target=lambda: app.run(
             host='0.0.0.0', 
-            port=int(os.environ.get("PORT", 5000)), 
+            port=app_port, 
             threaded=True, 
             debug=False, 
             use_reloader=False
@@ -296,18 +298,17 @@ if __name__ == "__main__":
     )
     flask_thread.start()
 
-    # 2. تشغيل البوت مع زيادة وقت الانتظار (Timeout)
-    # هذا يمنع البوت من قطع الاتصال عند معالجة ملفات ثقيلة مثل m6.py
-    print("🚀 تايتان V37 يعمل الآن بنظام الاستجابة السريعة...")
-    try:
-        bot.infinity_polling(
-            timeout=90, 
-            long_polling_timeout=90, 
-            logger_level=None
-        )
-    except Exception as e:
-        print(f"⚠️ خطأ في البوت: {e}")
-        time.sleep(5)
+    print(f"✅ تايتان V37 يعمل الآن على المنفذ: {app_port}")
+
+    # 2. تشغيل البوت مع نظام حماية من الانهيار
+    while True:
+        try:
+            bot.infinity_polling(timeout=90, long_polling_timeout=90)
+        except Exception as e:
+            print(f"⚠️ إعادة تشغيل البوت بسبب خطأ: {e}")
+            time.sleep(5)
+            
+
 
 
 
