@@ -14,7 +14,7 @@ BOT_TOKEN = '8217773138:AAEcAKggoL2ES4mMi8HLLrU8CGb2Dy99MvY'
 ADMIN_ID = 8504553407
 DEVELOPER_USERNAME = '@Alikhalafm'
 DEVELOPER_CHANNEL = '@teamofghost'
-BASE_URL = "https://mmmmmm-production-14d7.app.railway.app"
+BASE_URL = "https://mmmmmm-production-14d7.up.railway.app"
 
 bot = telebot.TeleBot(BOT_TOKEN, parse_mode="Markdown")
 app = Flask(__name__)
@@ -281,4 +281,5 @@ def user_redeem_code(m):
 if __name__ == "__main__":
     threading.Thread(target=lambda: app.run(host='0.0.0.0', port=int(os.environ.get("PORT", 5000))), daemon=True).start()
     bot.infinity_polling()
+
 
