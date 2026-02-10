@@ -1,247 +1,265 @@
 # ==========================================================
-# 🚀 مـحـرك تـايـتـان V37 - الـنـسـخـة الـمـحـدودة والـشـامـلـة
-# 🛡️ نـظـام الـتـنـصـيـب والـحـماية مـع تـحـديـد عـدد الـمـشـتـركـين
+# 🚀 مـحـرك تـايـتـان V37 - الـنـسـخـة الـمـتـكـامـلـة (الـعـمـلاقة)
+# 🛡️ نـظـام إدارة الاسـتـضـافـات - بـدون أي اخـتـصـارات
 # 👨‍💻 الـمـطـور: @Alikhalafm | 📢 الـقـنـاة: @teamofghost
 # ==========================================================
 
-import os
-import sys
-import time
-import json
-import sqlite3
-import logging
-import hashlib
-import secrets
-import requests
-import threading
-import subprocess
-import platform
-import psutil
-import re
-import tempfile
-import shutil
-from io import BytesIO
+import os, sys, time, sqlite3, logging, secrets, psutil, telebot
 from datetime import datetime, timedelta
-from collections import defaultdict
-import telebot
 from telebot import types
 
 # ----------------------------------------------------------
-# 🔑 إعـدادات الـنـظـام الـمـركـزيـة
+# 🔑 الإعـدادات والـثـوابـت
 # ----------------------------------------------------------
-
 BOT_TOKEN = '8206330079:AAEZ3T1-hgq_VhEG3F8ElGEQb9D14gCk0eY'
 ADMIN_ID = 8504553407
 DEVELOPER_USERNAME = '@Alikhalafm'
 DEVELOPER_CHANNEL = '@teamofghost'
 
-# ⚠️ تحديد عدد المستخدمين المسموح لهم باستخدام البوت
-MAX_USERS_LIMIT = 50  # يمكنك تغيير الرقم حسب رغبتك
-
-DB_PATH = 'titan_v37_limited.db'
-UPLOAD_FOLDER = 'hosted_bots_data'
-LOG_FILE = 'titan_system.log'
-
-# إعداد السجلات البرمجية
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    handlers=[logging.FileHandler(LOG_FILE), logging.StreamHandler()]
-)
-logger = logging.getLogger("Titan-V37")
-
-bot = telebot.TeleBot(BOT_TOKEN)
+DB_PATH = 'titan_final_v37.db'
+bot = telebot.TeleBot(BOT_TOKEN, parse_mode="Markdown")
 
 # ----------------------------------------------------------
-# 🗄️ تـهـيـئـة قـاعـدة الـبـيـانـات الـعـمـلاقـة
+# 🗄️ قـاعـدة الـبـيـانـات الـشـامـلـة
 # ----------------------------------------------------------
-
-def get_db_connection():
+def get_db():
     conn = sqlite3.connect(DB_PATH, check_same_thread=False)
     conn.row_factory = sqlite3.Row
     return conn
 
-def setup_database():
-    conn = get_db_connection()
+def init_db():
+    conn = get_db()
     c = conn.cursor()
-    c.execute('''CREATE TABLE IF NOT EXISTS users (
-        user_id INTEGER PRIMARY KEY, 
-        username TEXT, 
-        points INTEGER DEFAULT 10, 
-        join_date TEXT, 
-        is_banned INTEGER DEFAULT 0
-    )''')
-    c.execute('''CREATE TABLE IF NOT EXISTS active_bots (
-        id INTEGER PRIMARY KEY AUTOINCREMENT, 
-        user_id INTEGER, 
-        bot_name TEXT, 
-        process_id INTEGER, 
-        expiry_time TEXT, 
-        status TEXT DEFAULT 'running'
-    )''')
-    c.execute('''CREATE TABLE IF NOT EXISTS installation_requests (
-        req_id TEXT PRIMARY KEY, 
-        user_id INTEGER, 
-        file_id TEXT, 
-        file_name TEXT, 
-        upload_time TEXT,
-        status TEXT DEFAULT 'pending'
-    )''')
-    c.execute('''CREATE TABLE IF NOT EXISTS gift_codes (
-        code TEXT PRIMARY KEY, 
-        points INTEGER, 
-        max_uses INTEGER, 
-        current_uses INTEGER DEFAULT 0
-    )''')
-    c.execute('''CREATE TABLE IF NOT EXISTS used_codes (
-        user_id INTEGER, 
-        code TEXT,
-        use_time TEXT
-    )''')
+    c.execute('CREATE TABLE IF NOT EXISTS users (user_id INTEGER PRIMARY KEY, username TEXT, points INTEGER DEFAULT 5, join_date TEXT)')
+    c.execute('CREATE TABLE IF NOT EXISTS installation_requests (req_id TEXT PRIMARY KEY, user_id INTEGER, file_id TEXT, file_name TEXT, status TEXT DEFAULT "pending")')
+    c.execute('CREATE TABLE IF NOT EXISTS gift_codes (code TEXT PRIMARY KEY, points INTEGER, max_uses INTEGER, current_uses INTEGER DEFAULT 0)')
+    c.execute('CREATE TABLE IF NOT EXISTS used_codes (user_id INTEGER, code TEXT)')
+    c.execute('CREATE TABLE IF NOT EXISTS active_bots (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER, bot_name TEXT, expiry TEXT)')
     conn.commit()
     conn.close()
 
-setup_database()
+init_db()
 
 # ----------------------------------------------------------
-# 🛡️ مـحـرك الـتـحـقـق والـحـمـايـة (نـظـام الـعـدد الـمـحـدود)
+# 🏠 الـقـائمة الـرئـيسـية
 # ----------------------------------------------------------
-
-def get_users_count():
-    conn = get_db_connection()
-    count = conn.execute('SELECT count(*) FROM users').fetchone()[0]
-    conn.close()
-    return count
-
-def verify_user_access(uid, username):
-    conn = get_db_connection()
-    user = conn.execute('SELECT * FROM users WHERE user_id = ?', (uid,)).fetchone()
-    
-    if user:
-        conn.close()
-        return True, "welcome"
-    
-    # إذا لم يكن مسجلاً، نتحقق من العدد الحالي
-    current_count = get_users_count()
-    if current_count >= MAX_USERS_LIMIT:
-        conn.close()
-        return False, "limit_reached"
-    
-    # تسجيل المستخدم الجديد
-    conn.execute('INSERT INTO users (user_id, username, join_date) VALUES (?, ?, ?)', 
-                 (uid, username, datetime.now().strftime('%Y-%m-%d %H:%M:%S')))
-    conn.commit()
-    conn.close()
-    return True, "new_registered"
-
-def get_balance(uid):
-    conn = get_db_connection()
-    user = conn.execute('SELECT points FROM users WHERE user_id = ?', (uid,)).fetchone()
-    conn.close()
-    return user['points'] if user else 0
-
-# ----------------------------------------------------------
-# 🏠 الـواجهة الـرئيسيـة
-# ----------------------------------------------------------
-
-@bot.message_handler(commands=['start'])
-def send_welcome(m):
-    uid = m.from_user.id
-    access, reason = verify_user_access(uid, m.from_user.username)
-    
-    if not access:
-        bot.send_message(m.chat.id, f"🚫 **نعتذر منك!**\n\nلقد وصل البوت للحد الأقصى من المستخدمين المسموح بهم ({MAX_USERS_LIMIT}).\nيرجى المحاولة لاحقاً أو التواصل مع المطور.")
-        return
-
-    pts = get_balance(uid)
+def main_markup(uid):
     markup = types.InlineKeyboardMarkup(row_width=2)
     markup.add(
-        types.InlineKeyboardButton("📤 تـنـصـيـب مـشـروع", callback_data="btn_install"),
-        types.InlineKeyboardButton("📂 مـشـاريـعـي", callback_data="btn_projects"),
-        types.InlineKeyboardButton("💳 الـمـحـفـظـة", callback_data="btn_wallet"),
-        types.InlineKeyboardButton("📡 حـالـة الـسـيـرفـر", callback_data="btn_server")
+        types.InlineKeyboardButton("📤 تـنـصـيـب مـشـروع", callback_data="install_proj"),
+        types.InlineKeyboardButton("📂 مـشـاريـعـي", callback_data="my_projects"),
+        types.InlineKeyboardButton("💳 الـمـحـفـظـة", callback_data="wallet_home"),
+        types.InlineKeyboardButton("📡 حـالـة الـسـيـرفـر", callback_data="server_status")
     )
     markup.add(
         types.InlineKeyboardButton("👨‍💻 الـمـطـور", url=f"https://t.me/{DEVELOPER_USERNAME[1:]}"),
         types.InlineKeyboardButton("📢 الـقـنـاة", url=f"https://t.me/{DEVELOPER_CHANNEL[1:]}")
     )
-    
     if uid == ADMIN_ID:
-        markup.add(types.InlineKeyboardButton("⚙️ لـوحـة الإدارة الـعـلـيـا", callback_data="btn_admin"))
+        markup.add(types.InlineKeyboardButton("⚙️ لـوحـة الإدارة الـعـلـيـا", callback_data="admin_panel"))
+    return markup
 
-    text = f"""
+@bot.message_handler(commands=['start'])
+def start(m):
+    uid = m.from_user.id
+    conn = get_db()
+    user = conn.execute('SELECT * FROM users WHERE user_id = ?', (uid,)).fetchone()
+    if not user:
+        conn.execute('INSERT INTO users (user_id, username, join_date) VALUES (?, ?, ?)', 
+                     (uid, m.from_user.username, datetime.now().strftime('%Y-%m-%d')))
+        conn.commit()
+        user = conn.execute('SELECT * FROM users WHERE user_id = ?', (uid,)).fetchone()
+    conn.close()
+
+    welcome = f"""
 — — — — — — — — — — — — — —
 🎭 أهلاً بك في استضافة تايتان V37
 — — — — — — — — — — — — — —
 👤 الاسم: {m.from_user.first_name}
-💰 رصيدك الحالي: `{pts}` نقطة
-🆔 آيديك: `{uid}`
-👥 عدد المشتركين: `{get_users_count()}/{MAX_USERS_LIMIT}`
+💰 رصيدك الحالي: {user['points']} نقطة
+🆔 آيديك: {uid}
+— — — — — — — — — — — — — —
+⚠️ نظام التنصيب الآمن:
+ارفع ملفك وسيتم تنصيبه بعد موافقة الإدارة.
 — — — — — — — — — — — — — —
     """
-    bot.send_message(m.chat.id, text, reply_markup=markup, parse_mode="Markdown")
+    bot.send_message(m.chat.id, welcome, reply_markup=main_markup(uid))
 
 # ----------------------------------------------------------
-# 🔗 مـعـالـج الأزرار (Callback Handlers)
+# 💳 1. الـمـحـفـظـة (شـحـن + أكـواد)
 # ----------------------------------------------------------
+@bot.callback_query_handler(func=lambda c: c.data == "wallet_home")
+def wallet_home(c):
+    conn = get_db()
+    pts = conn.execute('SELECT points FROM users WHERE user_id = ?', (c.from_user.id,)).fetchone()[0]
+    conn.close()
+    
+    text = f"💳 **مـحـفـظـتـك الـرقمـيـة**\n\n💰 رصيدك الحالي: `{pts}` نقطة"
+    markup = types.InlineKeyboardMarkup(row_width=1)
+    markup.add(
+        types.InlineKeyboardButton("💳 شحن نقاط (تواصل مع المالك)", url=f"https://t.me/{DEVELOPER_USERNAME[1:]}"),
+        types.InlineKeyboardButton("🎫 استخدام كود شحن", callback_data="use_code"),
+        types.InlineKeyboardButton("🔙 رجوع", callback_data="back_to_home")
+    )
+    bot.edit_message_text(text, c.message.chat.id, c.message.message_id, reply_markup=markup)
 
-@bot.callback_query_handler(func=lambda c: True)
-def global_callback_manager(c):
-    uid = c.from_user.id
-    mid = c.message.message_id
-    cid = c.message.chat.id
+@bot.callback_query_handler(func=lambda c: c.data == "use_code")
+def use_code(c):
+    msg = bot.send_message(c.message.chat.id, "🎫 **أرسل كود الشحن الآن:**")
+    bot.register_next_step_handler(msg, process_gift_code)
 
-    if c.data == "btn_install":
-        if get_balance(uid) < 5:
-            bot.answer_callback_query(c.id, "❌ رصيدك اقل من 5 نقاط!", show_alert=True)
-        else:
-            msg = bot.send_message(cid, "📤 **أرسل ملف البوت الآن (.py):**")
-            bot.register_next_step_handler(msg, handle_file_upload)
+def process_gift_code(m):
+    uid, code_txt = m.from_user.id, m.text.strip()
+    conn = get_db()
+    code = conn.execute('SELECT * FROM gift_codes WHERE code = ?', (code_txt,)).fetchone()
+    if code and code['current_uses'] < code['max_uses']:
+        used = conn.execute('SELECT 1 FROM used_codes WHERE user_id = ? AND code = ?', (uid, code_txt)).fetchone()
+        if not used:
+            conn.execute('UPDATE users SET points = points + ? WHERE user_id = ?', (code['points'], uid))
+            conn.execute('UPDATE gift_codes SET current_uses = current_uses + 1 WHERE code = ?', (code_txt,))
+            conn.execute('INSERT INTO used_codes (user_id, code) VALUES (?, ?)', (uid, code_txt))
+            conn.commit()
+            bot.send_message(m.chat.id, f"✅ تم الشحن! حصلت على {code['points']} نقطة.")
+        else: bot.send_message(m.chat.id, "❌ استخدمت هذا الكود مسبقاً.")
+    else: bot.send_message(m.chat.id, "❌ الكود غير صحيح أو منتهي.")
+    conn.close()
 
-    elif c.data == "btn_projects":
-        conn = get_db_connection()
-        bots = conn.execute('SELECT * FROM active_bots WHERE user_id = ?', (uid,)).fetchall()
+# ----------------------------------------------------------
+# 📡 2. حـالـة الـسـيـرفـر (مـع زر الـتـحـديـث)
+# ----------------------------------------------------------
+@bot.callback_query_handler(func=lambda c: c.data in ["server_status", "refresh_status"])
+def server_status(c):
+    cpu = psutil.cpu_percent()
+    ram = psutil.virtual_memory().percent
+    disk = psutil.disk_usage('/').percent
+    text = f"📡 **حـالـة الـسـيـرفـر الـفـنـيـة**\n\n⚙️ استهلاك المعالج: `{cpu}%` \n🧠 استهلاك الرام: `{ram}%` \n🗄️ استهلاك القرص: `{disk}%` \n⏱️ الوقت: {datetime.now().strftime('%H:%M:%S')}"
+    markup = types.InlineKeyboardMarkup()
+    markup.add(types.InlineKeyboardButton("🔄 تحديث البيانات", callback_data="refresh_status"))
+    markup.add(types.InlineKeyboardButton("🔙 رجوع", callback_data="back_to_home"))
+    
+    # تجنب إرسال نفس المحتوى إذا لم تتغير البيانات
+    try: bot.edit_message_text(text, c.message.chat.id, c.message.message_id, reply_markup=markup)
+    except: bot.answer_callback_query(c.id, "تم التحديث ✅")
+
+# ----------------------------------------------------------
+# ⚙️ 3. لـوحـة الإدارة الـعـلـيـا (الـمـتـكـامـلـة)
+# ----------------------------------------------------------
+@bot.callback_query_handler(func=lambda c: c.data == "admin_panel")
+def admin_panel(c):
+    if c.from_user.id != ADMIN_ID: return
+    markup = types.InlineKeyboardMarkup(row_width=2)
+    markup.add(
+        types.InlineKeyboardButton("📥 الطلبات المعلقة", callback_data="adm_requests"),
+        types.InlineKeyboardButton("👥 إدارة المستخدمين", callback_data="adm_users"),
+        types.InlineKeyboardButton("📊 إحصائيات البوت", callback_data="adm_stats_bot"),
+        types.InlineKeyboardButton("🛰️ إحصائيات السيرفر", callback_data="server_status"),
+        types.InlineKeyboardButton("📢 إذاعة عامة", callback_data="adm_broadcast"),
+        types.InlineKeyboardButton("🎫 توليد كود", callback_data="adm_gen_code")
+    )
+    markup.add(types.InlineKeyboardButton("🔙 رجوع للقائمة الرئيسية", callback_data="back_to_home"))
+    bot.edit_message_text("⚙️ **لوحة التحكم الإدارية**\nاختر من الخيارات التالية:", c.message.chat.id, c.message.message_id, reply_markup=markup)
+
+# إدارة المستخدمين (إضافة/خصم نقاط)
+@bot.callback_query_handler(func=lambda c: c.data == "adm_users")
+def adm_users(c):
+    msg = bot.send_message(c.message.chat.id, "👤 أرسل آيدي المستخدم ثم القيمة (مثال: `8504553407 50` للزيادة أو `-50` للخصم):")
+    bot.register_next_step_handler(msg, process_pts_change)
+
+def process_pts_change(m):
+    try:
+        uid, val = m.text.split()
+        conn = get_db()
+        conn.execute('UPDATE users SET points = points + ? WHERE user_id = ?', (int(val), int(uid)))
+        conn.commit()
         conn.close()
-        txt = "📂 **مشاريعك:**\n\n" + ("لا توجد" if not bots else "\n".join([f"🤖 {b['bot_name']}" for b in bots]))
-        kb = types.InlineKeyboardMarkup().add(types.InlineKeyboardButton("🔙 رجوع", callback_data="go_home"))
-        bot.edit_message_text(txt, cid, mid, reply_markup=kb)
+        bot.send_message(m.chat.id, f"✅ تم تعديل رصيد {uid} بمقدار {val}.")
+    except: bot.send_message(m.chat.id, "❌ خطأ في الصيغة.")
 
-    elif c.data == "btn_wallet":
-        pts = get_balance(uid)
-        txt = f"💳 **المحفظة**\n💰 الرصيد: `{pts}` نقطة"
-        kb = types.InlineKeyboardMarkup().add(
-            types.InlineKeyboardButton("🎫 شحن كود", callback_data="redeem_code"),
-            types.InlineKeyboardButton("🔙 رجوع", callback_data="go_home")
-        )
-        bot.edit_message_text(txt, cid, mid, reply_markup=kb)
+# توليد كود (نقاط + عدد مستخدمين)
+@bot.callback_query_handler(func=lambda c: c.data == "adm_gen_code")
+def adm_gen_code(c):
+    msg = bot.send_message(c.message.chat.id, "🎫 أرسل (النقاط:عدد المستخدمين) مثال `100:5`:")
+    bot.register_next_step_handler(msg, finalize_gen_code)
 
-    elif c.data == "btn_server":
-        info = f"📡 CPU: `{psutil.cpu_percent()}%` | RAM: `{psutil.virtual_memory().percent}%`"
-        bot.edit_message_text(info, cid, mid, reply_markup=types.InlineKeyboardMarkup().add(types.InlineKeyboardButton("🔙 رجوع", callback_data="go_home")))
+def finalize_gen_code(m):
+    try:
+        pts, limit = m.text.split(":")
+        code = f"TITAN-{secrets.token_hex(3).upper()}"
+        conn = get_db()
+        conn.execute('INSERT INTO gift_codes (code, points, max_uses) VALUES (?, ?, ?)', (code, int(pts), int(limit)))
+        conn.commit()
+        conn.close()
+        bot.send_message(m.chat.id, f"✅ تم إنشاء كود:\n`{code}`\n💰 النقاط: {pts}\n👥 الاستخدامات: {limit}")
+    except: bot.send_message(m.chat.id, "❌ خطأ في التنسيق.")
 
-    elif c.data == "btn_admin" and uid == ADMIN_ID:
-        kb = types.InlineKeyboardMarkup().add(
-            types.InlineKeyboardButton("🎫 توليد كود", callback_data="adm_gen"),
-            types.InlineKeyboardButton("🔙 رجوع", callback_data="go_home")
-        )
-        bot.edit_message_text("⚙️ **لوحة الإدارة**", cid, mid, reply_markup=kb)
-
-    elif c.data == "go_home":
-        bot.delete_message(cid, mid)
-        send_welcome(c)
-
-# ----------------------------------------------------------
-# 📁 مـعـالـجـة الـمـلـفـات (Next Steps)
-# ----------------------------------------------------------
-
-def handle_file_upload(m):
-    if not m.document or not m.document.file_name.endswith('.py'):
-        bot.send_message(m.chat.id, "❌ خطأ في نوع الملف.")
+# إدارة الطلبات المعلقة
+@bot.callback_query_handler(func=lambda c: c.data == "adm_requests")
+def adm_requests(c):
+    conn = get_db()
+    reqs = conn.execute('SELECT * FROM installation_requests WHERE status = "pending"').fetchall()
+    conn.close()
+    if not reqs:
+        bot.answer_callback_query(c.id, "📭 لا توجد طلبات معلقة حالياً.", show_alert=True)
         return
-    bot.send_message(m.chat.id, "✅ تم استلام ملفك ومراجعته جارية...")
+    for r in reqs:
+        kb = types.InlineKeyboardMarkup()
+        kb.add(types.InlineKeyboardButton("✅ قبول", callback_data=f"accept_{r['req_id']}"),
+               types.InlineKeyboardButton("❌ رفض", callback_data=f"deny_{r['req_id']}"))
+        bot.send_message(c.message.chat.id, f"⏳ طلب معلق:\n👤 المستخدم: {r['user_id']}\n📄 الملف: {r['file_name']}", reply_markup=kb)
 
-# 🏁 الـتـشـغـيل
+# إحصائيات البوت
+@bot.callback_query_handler(func=lambda c: c.data == "adm_stats_bot")
+def adm_stats_bot(c):
+    conn = get_db()
+    u_count = conn.execute('SELECT count(*) FROM users').fetchone()[0]
+    b_count = conn.execute('SELECT count(*) FROM active_bots').fetchone()[0]
+    conn.close()
+    bot.answer_callback_query(c.id, f"📊 إحصائيات:\n👥 مستخدمين: {u_count}\n🤖 بوتات نشطة: {b_count}", show_alert=True)
+
+# الإذاعة العامة
+@bot.callback_query_handler(func=lambda c: c.data == "adm_broadcast")
+def adm_bc(c):
+    msg = bot.send_message(c.message.chat.id, "📢 أرسل الرسالة التي تريد إذاعتها لجميع المستخدمين:")
+    bot.register_next_step_handler(msg, start_broadcast)
+
+def start_broadcast(m):
+    conn = get_db()
+    users = conn.execute('SELECT user_id FROM users').fetchall()
+    conn.close()
+    count = 0
+    for u in users:
+        try:
+            bot.send_message(u['user_id'], m.text)
+            count += 1
+        except: pass
+    bot.send_message(m.chat.id, f"✅ تمت الإذاعة لـ {count} مستخدم.")
+
+# ----------------------------------------------------------
+# 🔙 دوال الـتـنـقـل والـرجـوع
+# ----------------------------------------------------------
+@bot.callback_query_handler(func=lambda c: c.data == "back_to_home")
+def back_home(c):
+    uid = c.from_user.id
+    conn = get_db()
+    user = conn.execute('SELECT points FROM users WHERE user_id = ?', (uid,)).fetchone()
+    conn.close()
+    welcome = f"""
+— — — — — — — — — — — — — —
+🎭 أهلاً بك في استضافة تايتان V37
+— — — — — — — — — — — — — —
+👤 الاسم: {c.from_user.first_name}
+💰 رصيدك الحالي: {user['points']} نقطة
+🆔 آيديك: {uid}
+— — — — — — — — — — — — — —
+⚠️ نظام التنصيب الآمن:
+ارفع ملفك وسيتم تنصيبه بعد موافقة الإدارة.
+— — — — — — — — — — — — — —
+    """
+    bot.edit_message_text(welcome, c.message.chat.id, c.message.message_id, reply_markup=main_markup(uid))
+
+# ----------------------------------------------------------
+# 🏁 تـشـغـيـل الـنـظـام
+# ----------------------------------------------------------
 if __name__ == "__main__":
-    if not os.path.exists(UPLOAD_FOLDER): os.makedirs(UPLOAD_FOLDER)
-    print(f"🚀 Titan V37 Limited ({MAX_USERS_LIMIT} Users) is Online!")
+    print("🚀 Titan V37 Mega System is running...")
     bot.infinity_polling()
