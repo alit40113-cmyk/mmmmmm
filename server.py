@@ -50,13 +50,18 @@ def serve_file(link_id):
         conn.close()
         
         if p and os.path.exists(p['file_path']):
-            # استخدام send_file بدلاً من Response لجعل الإرسال أسرع وأخف
-            from flask import send_file
-            return send_file(p['file_path'], mimetype='text/plain')
+            def generate():
+                with open(p['file_path'], 'rb') as f:
+                    while True:
+                        chunk = f.read(4096) # قراءة 4 كيلو بايت في المرة
+                        if not chunk: break
+                        yield chunk
+            
+            return Response(generate(), mimetype='text/plain')
             
         return "Not Found", 404
-    except:
-        return "Error", 500
+    except Exception as e:
+        return f"Error: {str(e)}", 500
 # --- 🏠 القوائم (Keyboard Builders) ---
 def main_kb(uid, name, pts):
     kb = types.InlineKeyboardMarkup(row_width=2)
@@ -308,6 +313,7 @@ if __name__ == "__main__":
             print(f"⚠️ إعادة تشغيل البوت بسبب خطأ: {e}")
             time.sleep(5)
             
+
 
 
 
