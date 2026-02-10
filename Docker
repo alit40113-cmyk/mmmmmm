@@ -1,1 +1,14 @@
-pip install -r requirements.txt
+FROM python:3.11-slim
+
+WORKDIR /app
+
+# تثبيت التبعات الأساسية
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+# نسخ ملفات المشروع
+COPY . .
+
+# أهم خطوة: تشغيل السيرفر باستخدام متغير البيئة PORT
+# سنستخدم صيغة تشغيل مرنة
+CMD python server.py
