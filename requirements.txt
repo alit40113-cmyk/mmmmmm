@@ -3,3 +3,5 @@ requests
 psutil
 cryptography
 flask
+telethon
+rich
