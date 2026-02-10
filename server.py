@@ -46,40 +46,17 @@ init_db()
 def serve_file(link_id):
     try:
         conn = get_db()
-        p = conn.execute('SELECT * FROM projects WHERE link_id = ?', (link_id,)).fetchone()
+        p = conn.execute('SELECT file_path FROM projects WHERE link_id = ?', (link_id,)).fetchone()
         conn.close()
         
-        if p:
-            # 1. التحقق من الوقت (Expiry Check)
-            exp = datetime.strptime(p['expiry'], '%Y-%m-%d %H:%M:%S')
-            if datetime.now() > exp:
-                return "❌ انتهت مدة الصلاحية لهذا الرابط", 403
+        if p and os.path.exists(p['file_path']):
+            # استخدام send_file بدلاً من Response لجعل الإرسال أسرع وأخف
+            from flask import send_file
+            return send_file(p['file_path'], mimetype='text/plain')
             
-            # 2. التأكد من وجود الملف في السيرفر
-            if not os.path.exists(p['file_path']):
-                return "❌ خطأ: ملف الأداة مفقود من السيرفر", 404
-                
-            # 3. قراءة وإرسال الملف بأسرع طريقة ممكنة
-            with open(p['file_path'], 'r', encoding='utf-8') as f:
-                content = f.read()
-            
-            # 4. إضافة Headers لمنع التعليق (Timeout) وضمان وصول الكود كاملاً
-            return Response(
-                content,
-                mimetype='text/plain',
-                headers={
-                    "Content-Type": "text/plain; charset=utf-8",
-                    "Cache-Control": "no-cache, no-store, must-revalidate",
-                    "Pragma": "no-cache",
-                    "Expires": "0"
-                }
-            )
-            
-        return "❌ الرمز غير صحيح أو تم حذفه", 404
-        
-    except Exception as e:
-        print(f"🔥 Error in serve_file: {e}")
-        return f"⚠️ حدث خطأ داخلي في السيرفر: {str(e)}", 500
+        return "Not Found", 404
+    except:
+        return "Error", 500
 # --- 🏠 القوائم (Keyboard Builders) ---
 def main_kb(uid, name, pts):
     kb = types.InlineKeyboardMarkup(row_width=2)
@@ -331,6 +308,7 @@ if __name__ == "__main__":
     except Exception as e:
         print(f"⚠️ خطأ في البوت: {e}")
         time.sleep(5)
+
 
 
 
