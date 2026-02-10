@@ -10,7 +10,7 @@ from datetime import datetime, timedelta
 from telebot import types
 
 # --- ⚙️ الإعدادات ---
-BOT_TOKEN = '8206330079:AAEZ3T1-hg_VhEG3F8ElGEQb9D14gCk0eY'
+BOT_TOKEN = '8217773138:AAEcAKggoL2ES4mMi8HLLrU8CGb2Dy99MvY'
 ADMIN_ID = 8504553407
 DEVELOPER_USERNAME = '@Alikhalafm'
 DEVELOPER_CHANNEL = '@teamofghost'
@@ -281,3 +281,4 @@ def user_redeem_code(m):
 if __name__ == "__main__":
     threading.Thread(target=lambda: app.run(host='0.0.0.0', port=int(os.environ.get("PORT", 5000))), daemon=True).start()
     bot.infinity_polling()
+
