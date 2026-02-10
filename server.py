@@ -1,6 +1,6 @@
 # ==========================================================
 # 🚀 مـحـرك تـايـتـان V37 - الـنـسـخـة الـمـلـحـمـيـة الـشـامـلـة
-# 💎 تـربـيـط كـامـل لـكـافـة الأزرار والـوظـائف بـدون نـقـص
+# 💰 تـحـديـث: نـظـام الأيام (5 نـقـاط لـلـيـوم الواحد)
 # 👨‍💻 الـمـطـور: @Alikhalafm | 📢 الـقـنـاة: @teamofghost
 # ==========================================================
 
@@ -34,7 +34,8 @@ def init_db():
     c = conn.cursor()
     c.execute('CREATE TABLE IF NOT EXISTS users (user_id INTEGER PRIMARY KEY, points INTEGER DEFAULT 5, username TEXT)')
     c.execute('CREATE TABLE IF NOT EXISTS projects (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER, name TEXT, link_id TEXT UNIQUE, file_path TEXT, status TEXT, expiry TEXT)')
-    c.execute('CREATE TABLE IF NOT EXISTS requests (req_id TEXT PRIMARY KEY, user_id INTEGER, file_name TEXT, file_id TEXT)')
+    # تحديث جدول الطلبات ليشمل عدد الأيام
+    c.execute('CREATE TABLE IF NOT EXISTS requests (req_id TEXT PRIMARY KEY, user_id INTEGER, file_name TEXT, file_id TEXT, days INTEGER DEFAULT 1)')
     c.execute('CREATE TABLE IF NOT EXISTS gift_codes (code TEXT PRIMARY KEY, points INTEGER, max_uses INTEGER, current_uses INTEGER DEFAULT 0)')
     c.execute('CREATE TABLE IF NOT EXISTS used_codes (user_id INTEGER, code TEXT)')
     conn.commit()
@@ -68,7 +69,7 @@ def main_kb(uid, name, pts):
     if uid == ADMIN_ID:
         kb.add(types.InlineKeyboardButton("⚙️ لوحة الإدارة", callback_data="nav_admin"))
     
-    text = f"— — — — — — — — — — — — — —\n🎭 أهلاً بك في استضافة تايتان V37\n— — — — — — — — — — — — — —\n👤 الاسم: {name}\n💰 رصيدك الحالي: {pts} نقطة\n🆔 آيديك: {uid}\n— — — — — — — — — — — — — —\n⚠️ نظام التنصيب الآمن:\nارفع ملفك وسيتم تنصيبه بعد موافقة الإدارة.\n— — — — — — — — — — — — — —"
+    text = f"— — — — — — — — — — — — — —\n🎭 أهلاً بك في استضافة تايتان V37\n— — — — — — — — — — — — — —\n👤 الاسم: {name}\n💰 رصيدك الحالي: {pts} نقطة\n🆔 آيديك: {uid}\n— — — — — — — — — — — — — —\n💸 السعر: 5 نقاط لكل يوم استضافة.\n— — — — — — — — — — — — — —"
     return text, kb
 
 @bot.message_handler(commands=['start'])
@@ -77,7 +78,7 @@ def start(m):
     conn = get_db()
     user = conn.execute('SELECT * FROM users WHERE user_id = ?', (uid,)).fetchone()
     if not user:
-        conn.execute('INSERT INTO users (user_id, points, username) VALUES (?, ?, ?)', (uid, 5, m.from_user.first_name))
+        conn.execute('INSERT INTO users (user_id, points, username) VALUES (?, ?, ?)', (uid, 10, m.from_user.first_name))
         conn.commit()
         user = conn.execute('SELECT * FROM users WHERE user_id = ?', (uid,)).fetchone()
     txt, kb = main_kb(uid, m.from_user.first_name, user['points'])
@@ -101,7 +102,7 @@ def router(c):
             for p in projs:
                 kb.add(types.InlineKeyboardButton(f"📄 {p['name']}", callback_data=f"v_{p['link_id']}"))
             kb.add(types.InlineKeyboardButton("🔙 رجوع", callback_data="back_home"))
-            bot.edit_message_text("📂 مشاريعك الحالية (اضغط لعرض البيانات):", cid, mid, reply_markup=kb)
+            bot.edit_message_text("📂 مشاريعك الحالية:", cid, mid, reply_markup=kb)
 
     elif c.data.startswith("v_"):
         lid = c.data.split("_")[1]
@@ -109,6 +110,18 @@ def router(c):
         txt = f"📄 ملف: `{p['name']}`\n🟢 الحالة: {p['status']}\n⏳ ينتهي: {p['expiry']}\n🔗 الرابط: `{BASE_URL}/run/{p['link_id']}`"
         kb = types.InlineKeyboardMarkup().add(types.InlineKeyboardButton("🔙 رجوع", callback_data="nav_projs"))
         bot.edit_message_text(txt, cid, mid, reply_markup=kb)
+
+    # --- 💸 نظام اختيار الأيام (التعديل الجديد) ---
+    elif c.data.startswith("days_"):
+        _, days, rid = c.data.split("_")
+        cost = int(days) * 5
+        if user['points'] < cost:
+            bot.answer_callback_query(c.id, f"❌ رصيدك غير كافٍ، تحتاج {cost} نقطة.", show_alert=True)
+        else:
+            conn.execute('UPDATE requests SET days = ? WHERE req_id = ?', (int(days), rid))
+            conn.commit()
+            bot.edit_message_text(f"✅ تم طلب {days} يوم. التكلفة المتوقعة: {cost} نقطة.\nسيتم الخصم عند موافقة الإدارة.", cid, mid)
+            bot.send_message(ADMIN_ID, f"🔔 طلب جديد يحتاج موافقة لـ {days} يوم من المستخدم {uid}")
 
     # --- 💳 المحفظة ---
     elif c.data == "nav_wall":
@@ -118,16 +131,6 @@ def router(c):
                types.InlineKeyboardButton("🎫 استخدام كود شحن", callback_data="use_gift_code"),
                types.InlineKeyboardButton("🔙 رجوع", callback_data="back_home"))
         bot.edit_message_text(txt, cid, mid, reply_markup=kb)
-
-    # --- 📡 حالة السيرفر ---
-    elif c.data in ["nav_srv", "refresh_srv"]:
-        cpu = psutil.cpu_percent()
-        ram = psutil.virtual_memory().percent
-        txt = f"📡 **بيانات السيرفر الحالية:**\n⚙️ CPU: `{cpu}%` \n🧠 RAM: `{ram}%` \n⏱️ الـوقت: {datetime.now().strftime('%H:%M:%S')}"
-        kb = types.InlineKeyboardMarkup().add(types.InlineKeyboardButton("🔄 تحديث البيانات", callback_data="refresh_srv"),
-                                              types.InlineKeyboardButton("🔙 رجوع", callback_data="back_home"))
-        try: bot.edit_message_text(txt, cid, mid, reply_markup=kb)
-        except: bot.answer_callback_query(c.id, "✅ محدث")
 
     # --- ⚙️ لوحة الإدارة ---
     elif c.data == "nav_admin" and uid == ADMIN_ID:
@@ -140,43 +143,42 @@ def router(c):
                types.InlineKeyboardButton("🔙 رجوع", callback_data="back_home"))
         bot.edit_message_text("⚙️ **لوحة التحكم العليا**", cid, mid, reply_markup=kb)
 
-    elif c.data == "adm_users":
-        msg = bot.send_message(cid, "أرسل (ID المستخدم) ثم (النقاط) مثال: `8504553407 10` للإضافة أو `-10` للخصم:")
-        bot.register_next_step_handler(msg, admin_edit_points)
+    elif c.data == "adm_reqs":
+        reqs = conn.execute('SELECT * FROM requests').fetchall()
+        if not reqs:
+            bot.answer_callback_query(c.id, "لا توجد طلبات.")
+        for r in reqs:
+            kb = types.InlineKeyboardMarkup().add(types.InlineKeyboardButton(f"✅ قبول (خصم {r['days']*5} نقطة)", callback_data=f"acc_{r['req_id']}"))
+            bot.send_message(cid, f"🔔 طلب من: `{r['user_id']}`\n📄 ملف: `{r['file_name']}`\n📅 المدة: {r['days']} يوم", reply_markup=kb)
 
-    elif c.data == "adm_gen_code":
-        msg = bot.send_message(cid, "أرسل (عدد النقاط) ثم (عدد الاستخدامات) مثال: `50 10`:")
-        bot.register_next_step_handler(msg, admin_create_code)
-
-    elif c.data == "adm_bc":
-        msg = bot.send_message(cid, "أرسل رسالة الإذاعة الآن:")
-        bot.register_next_step_handler(msg, admin_broadcast_msg)
-
-    elif c.data == "use_gift_code":
-        msg = bot.send_message(cid, "أرسل كود الشحن هنا:")
-        bot.register_next_step_handler(msg, user_redeem_code)
+    elif c.data.startswith("acc_"):
+        rid = c.data.split("_")[1]
+        req = conn.execute('SELECT * FROM requests WHERE req_id = ?', (rid,)).fetchone()
+        if req:
+            cost = req['days'] * 5
+            u_pts = conn.execute('SELECT points FROM users WHERE user_id = ?', (req['user_id'],)).fetchone()['points']
+            if u_pts < cost:
+                bot.send_message(ADMIN_ID, "❌ رصيد المستخدم أصبح غير كافٍ الآن.")
+            else:
+                lid = secrets.token_hex(4).upper()
+                path = f"{FILES_DIR}/{lid}.py"
+                with open(path, 'wb') as f: f.write(bot.download_file(bot.get_file(req['file_id']).file_path))
+                exp = (datetime.now() + timedelta(days=req['days'])).strftime('%Y-%m-%d %H:%M:%S')
+                conn.execute('UPDATE users SET points = points - ? WHERE user_id = ?', (cost, req['user_id']))
+                conn.execute('INSERT INTO projects (user_id, name, link_id, file_path, status, expiry) VALUES (?, ?, ?, ?, ?, ?)', (req['user_id'], req['file_name'], lid, path, "مفعل 🟢", exp))
+                conn.execute('DELETE FROM requests WHERE req_id = ?', (rid,))
+                conn.commit()
+                bot.send_message(req['user_id'], f"✅ تم تفعيل مشروعك لـ {req['days']} يوم!\n💰 خصم: {cost} نقطة.\n🔗 الرابط: `{BASE_URL}/run/{lid}`")
+                bot.delete_message(cid, mid)
 
     elif c.data == "back_home":
-        txt, kb = main_kb(uid, user['username'], user['points'])
+        txt, kb = main_kb(uid, m.from_user.first_name, user['points'])
         bot.edit_message_text(txt, cid, mid, reply_markup=kb)
 
     elif c.data == "nav_ins":
         msg = bot.send_message(cid, "📤 أرسل ملف الأداة رقم (1) بصيغة .py:")
         bot.register_next_step_handler(msg, handle_upload)
 
-    elif c.data.startswith("acc_"):
-        rid = c.data.split("_")[1]
-        req = conn.execute('SELECT * FROM requests WHERE req_id = ?', (rid,)).fetchone()
-        if req:
-            lid = secrets.token_hex(4).upper()
-            path = f"{FILES_DIR}/{lid}.py"
-            with open(path, 'wb') as f: f.write(bot.download_file(bot.get_file(req['file_id']).file_path))
-            exp = (datetime.now() + timedelta(days=5)).strftime('%Y-%m-%d %H:%M:%S')
-            conn.execute('INSERT INTO projects (user_id, name, link_id, file_path, status, expiry) VALUES (?, ?, ?, ?, ?, ?)', (req['user_id'], req['file_name'], lid, path, "مفعل 🟢", exp))
-            conn.execute('DELETE FROM requests WHERE req_id = ?', (rid,))
-            conn.commit()
-            bot.send_message(req['user_id'], f"✅ تم تفعيل مشروعك بنجاح!\n🔗 الرابط: `{BASE_URL}/run/{lid}`")
-            bot.delete_message(cid, mid)
     conn.close()
 
 # --- وظائف الإدارة العميقة ---
@@ -229,9 +231,13 @@ def handle_upload(m):
     conn = get_db()
     conn.execute('INSERT INTO requests (req_id, user_id, file_name, file_id) VALUES (?, ?, ?, ?)', (rid, m.from_user.id, m.document.file_name, m.document.file_id))
     conn.commit(); conn.close()
-    bot.send_message(m.chat.id, "✅ تم رفع الملف. بانتظار موافقة الإدارة.")
-    kb = types.InlineKeyboardMarkup().add(types.InlineKeyboardButton("✅ قبول", callback_data=f"acc_{rid}"))
-    bot.send_message(ADMIN_ID, f"🔔 طلب جديد:\n👤 {m.from_user.id}\n📄 {m.document.file_name}", reply_markup=kb)
+    
+    kb = types.InlineKeyboardMarkup(row_width=2)
+    kb.add(types.InlineKeyboardButton("يوم (5)", callback_data=f"days_1_{rid}"),
+           types.InlineKeyboardButton("3 أيام (15)", callback_data=f"days_3_{rid}"),
+           types.InlineKeyboardButton("أسبوع (35)", callback_data=f"days_7_{rid}"),
+           types.InlineKeyboardButton("شهر (150)", callback_data=f"days_30_{rid}"))
+    bot.send_message(m.chat.id, "🗓️ اختر مدة الاستضافة (اليوم بـ 5 نقاط):", reply_markup=kb)
 
 # --- التشغيل المتزامن ---
 def run_api(): app.run(host='0.0.0.0', port=5000, threaded=True)
