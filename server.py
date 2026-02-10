@@ -10,7 +10,7 @@ from datetime import datetime, timedelta
 from telebot import types
 
 # --- ⚙️ الإعدادات المركزية ---
-BOT_TOKEN = '8206330079:AAEZ3T1-hgq_VhEG3F8ElGEQb9D14gCk0eY'
+BOT_TOKEN = '8206330079:AAEZ3T1-hg_VhEG3F8ElGEQb9D14gCk0eY'
 ADMIN_ID = 8504553407
 DEVELOPER_USERNAME = '@Alikhalafm'
 DEVELOPER_CHANNEL = '@teamofghost'
@@ -71,7 +71,7 @@ def main_kb(uid, name, pts):
     text = f"— — — — — — — — — — — — — —\n🎭 أهلاً بك في استضافة تايتان V37\n— — — — — — — — — — — — — —\n👤 الاسم: {name}\n💰 رصيدك: {pts} نقطة\n🆔 آيديك: {uid}\n— — — — — — — — — — — — — —"
     return text, kb
 
-# --- 📥 نظام التنصيب (مع خيار الربط) ---
+# --- 📥 نظام التنصيب ---
 def handle_upload(m):
     if not m.document or not m.document.file_name.endswith('.py'):
         bot.send_message(m.chat.id, "❌ أرسل ملف بايثون (.py) فقط."); return
@@ -108,7 +108,7 @@ def router(c):
             types.InlineKeyboardButton("✅ نعم (أداة 2)", callback_data=f"link_yes_{rid}"),
             types.InlineKeyboardButton("❌ لا (استضافة)", callback_data=f"link_no_{rid}")
         )
-        bot.edit_message_text("🔗 هل تريد ربط المشروع بالأداة رقم 2؟\n(خيار 'نعم' يعطيك رابطاً للأداة، خيار 'لا' يشغل البوت هنا)", cid, mid, reply_markup=kb)
+        bot.edit_message_text("🔗 هل تريد ربط المشروع بالأداة رقم 2؟", cid, mid, reply_markup=kb)
 
     elif c.data.startswith("link_"):
         choice, rid = c.data.split("_")[1], c.data.split("_")[2]
@@ -154,18 +154,19 @@ def router(c):
         try: bot.edit_message_text(txt, cid, mid, reply_markup=kb)
         except: pass
 
-    # --- لوحة الإدارة (التربيط الكامل) ---
+    # --- 🛠 لوحة الإدارة (تربيط كامل لجميع أزرارك) ---
     elif c.data == "nav_admin" and uid == ADMIN_ID:
         kb = types.InlineKeyboardMarkup(row_width=2).add(
             types.InlineKeyboardButton("📥 الطلبات", callback_data="adm_reqs"),
-            types.InlineKeyboardButton("👥 النقاط", callback_data="adm_users"),
-            types.InlineKeyboardButton("🎫 كود", callback_data="adm_gen_code"),
-            types.InlineKeyboardButton("📊 إحصاء", callback_data="adm_stats"),
+            types.InlineKeyboardButton("📊 الإحصائيات", callback_data="adm_stats"),
+            types.InlineKeyboardButton("➕ إضافة نقاط", callback_data="adm_add_pts"),
+            types.InlineKeyboardButton("🎫 توليد كود", callback_data="adm_gen_code"),
             types.InlineKeyboardButton("📢 إذاعة", callback_data="adm_bc"),
-            types.InlineKeyboardButton("🚫 حظر", callback_data="adm_ban"),
+            types.InlineKeyboardButton("🚫 حظر مستخدم", callback_data="adm_ban"),
+            types.InlineKeyboardButton("🔄 تصفير نقاط", callback_data="adm_reset"),
             types.InlineKeyboardButton("🔙 رجوع", callback_data="back_home")
         )
-        bot.edit_message_text("⚙️ لوحة الإدارة", cid, mid, reply_markup=kb)
+        bot.edit_message_text("⚙️ **لوحة التحكم العليا**", cid, mid, reply_markup=kb)
 
     elif c.data == "adm_reqs":
         reqs = conn.execute('SELECT * FROM requests').fetchall()
@@ -178,6 +179,26 @@ def router(c):
         u_c = conn.execute('SELECT COUNT(*) FROM users').fetchone()[0]
         p_c = conn.execute('SELECT COUNT(*) FROM projects').fetchone()[0]
         bot.answer_callback_query(c.id, f"👥 مستخدمين: {u_c}\n🚀 مشاريع: {p_c}", show_alert=True)
+
+    elif c.data == "adm_add_pts":
+        msg = bot.send_message(cid, "👤 أرسل: (ID المستخدم) (النقاط)")
+        bot.register_next_step_handler(msg, admin_add_points)
+
+    elif c.data == "adm_bc":
+        msg = bot.send_message(cid, "📢 أرسل رسالة الإذاعة:")
+        bot.register_next_step_handler(msg, admin_broadcast)
+
+    elif c.data == "adm_gen_code":
+        msg = bot.send_message(cid, "🎫 أرسل: (النقاط) (عدد الاستخدامات)")
+        bot.register_next_step_handler(msg, admin_gen_code)
+
+    elif c.data == "adm_ban":
+        msg = bot.send_message(cid, "🚫 أرسل ID المستخدم لحظر:")
+        bot.register_next_step_handler(msg, admin_ban_user)
+
+    elif c.data == "adm_reset":
+        msg = bot.send_message(cid, "🔄 أرسل ID المستخدم لتصفير نقاطه:")
+        bot.register_next_step_handler(msg, admin_reset_points)
 
     elif c.data.startswith("acc_"):
         rid = c.data.split("_")[1]
@@ -200,22 +221,6 @@ def router(c):
             bot.send_message(req['user_id'], f"✅ تم تفعيل مشروعك!\n🔗 الرابط: `{BASE_URL}/run/{lid}`")
             bot.edit_message_text("✅ تمت الموافقة.", cid, mid)
 
-    elif c.data == "adm_bc":
-        msg = bot.send_message(cid, "أرسل رسالة الإذاعة:")
-        bot.register_next_step_handler(msg, admin_broadcast)
-
-    elif c.data == "adm_users":
-        msg = bot.send_message(cid, "أرسل (ID المستخدم) (النقاط):")
-        bot.register_next_step_handler(msg, admin_add_pts)
-
-    elif c.data == "adm_gen_code":
-        msg = bot.send_message(cid, "أرسل (النقاط) (الاستخدامات):")
-        bot.register_next_step_handler(msg, admin_gen_code)
-
-    elif c.data == "adm_ban":
-        msg = bot.send_message(cid, "أرسل ID المستخدم لحظر:")
-        bot.register_next_step_handler(msg, admin_ban)
-
     elif c.data == "use_gift_code":
         msg = bot.send_message(cid, "🎫 أرسل الكود:")
         bot.register_next_step_handler(msg, user_redeem)
@@ -226,29 +231,33 @@ def router(c):
 
     conn.close()
 
-# --- 🛠️ دوال الإدارة ---
+# --- 🛠️ دوال التنفيذ الإداري (كاملة ومربوطة) ---
 def admin_broadcast(m):
     conn = get_db(); users = conn.execute('SELECT user_id FROM users').fetchall(); conn.close()
     for u in users:
         try: bot.send_message(u['user_id'], m.text)
         except: pass
-    bot.send_message(m.chat.id, "✅ تم.")
+    bot.send_message(m.chat.id, "✅ تم إرسال الإذاعة.")
 
-def admin_add_pts(m):
+def admin_add_points(m):
     try:
         tid, pts = m.text.split(); conn = get_db()
         conn.execute('UPDATE users SET points = points + ? WHERE user_id = ?', (int(pts), tid))
-        conn.commit(); conn.close(); bot.send_message(m.chat.id, "✅ تم.")
-    except: bot.send_message(m.chat.id, "❌ خطأ.")
+        conn.commit(); conn.close(); bot.send_message(m.chat.id, "✅ تم إضافة النقاط.")
+    except: bot.send_message(m.chat.id, "❌ خطأ بالصيغة.")
+
+def admin_reset_points(m):
+    conn = get_db(); conn.execute('UPDATE users SET points = 0 WHERE user_id = ?', (m.text,)); conn.commit(); conn.close()
+    bot.send_message(m.chat.id, "✅ تم تصفير النقاط.")
 
 def admin_gen_code(m):
     try:
         pts, uses = m.text.split(); code = f"TITAN-{secrets.token_hex(3).upper()}"
         conn = get_db(); conn.execute('INSERT INTO gift_codes (code, points, max_uses) VALUES (?, ?, ?)', (code, int(pts), int(uses)))
         conn.commit(); conn.close(); bot.send_message(m.chat.id, f"✅ كود: `{code}`")
-    except: bot.send_message(m.chat.id, "❌ فشل.")
+    except: bot.send_message(m.chat.id, "❌ خطأ.")
 
-def admin_ban(m):
+def admin_ban_user(m):
     conn = get_db(); conn.execute('UPDATE users SET is_banned = 1 WHERE user_id = ?', (m.text,)); conn.commit(); conn.close()
     bot.send_message(m.chat.id, "✅ تم الحظر.")
 
