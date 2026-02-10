@@ -1,5 +1,5 @@
 # ==========================================================
-# 🚀 مـحـرك تـايـتـان V37 - الـنـسـخـة الـمـوسـعـة والـنـهـائـيـة
+# 🚀 مـحـرك تـايـتـان V37 - الـنـسـخـة الـعـمـلاقـة والـنـهـائـيـة
 # 🛡️ نـظـام إدارة الاسـتـضـافـات الـشـامـل والآمن
 # 👨‍💻 الـمـطـور: @Alikhalafm | 📢 الـقـنـاة: @teamofghost
 # ==========================================================
@@ -34,8 +34,13 @@ def get_db():
 def init_db():
     conn = get_db()
     c = conn.cursor()
+    # مستخدمين
     c.execute('CREATE TABLE IF NOT EXISTS users (user_id INTEGER PRIMARY KEY, username TEXT, points INTEGER DEFAULT 5, join_date TEXT, is_banned INTEGER DEFAULT 0)')
+    # بوتات نشطة
     c.execute('CREATE TABLE IF NOT EXISTS active_bots (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER, bot_name TEXT, process_id INTEGER, expiry_time TEXT, status TEXT)')
+    # طلبات انتظار
+    c.execute('CREATE TABLE IF NOT EXISTS installation_requests (req_id TEXT PRIMARY KEY, user_id INTEGER, file_id TEXT, file_name TEXT, status TEXT)')
+    # أكواد
     c.execute('CREATE TABLE IF NOT EXISTS gift_codes (code TEXT PRIMARY KEY, points INTEGER, max_uses INTEGER, current_uses INTEGER DEFAULT 0)')
     c.execute('CREATE TABLE IF NOT EXISTS used_codes (user_id INTEGER, code TEXT)')
     conn.commit()
@@ -98,21 +103,50 @@ def start(m):
     bot.send_message(m.chat.id, welcome_text, reply_markup=markup)
 
 # ----------------------------------------------------------
+# 📤 نـظـام الـتـنـصـيـب (Installation Logic)
+# ----------------------------------------------------------
+@bot.callback_query_handler(func=lambda c: c.data == "start_install")
+def start_install_process(c):
+    uid = c.from_user.id
+    if get_points(uid) < 10:
+        bot.answer_callback_query(c.id, "❌ رصيدك غير كافٍ (تحتاج 10 نقاط على الأقل).", show_alert=True)
+        return
+    
+    msg = bot.send_message(c.message.chat.id, "📤 **يرجى إرسال ملف البوت الآن (بصيغة .py فقط):**")
+    bot.register_next_step_handler(msg, handle_uploaded_file)
+
+def handle_uploaded_file(m):
+    if not m.document or not m.document.file_name.endswith('.py'):
+        bot.send_message(m.chat.id, "❌ عذراً، يجب إرسال ملف برمجية ينتهي بـ .py")
+        return
+
+    req_id = secrets.token_hex(4).upper()
+    conn = get_db()
+    conn.execute('INSERT INTO installation_requests (req_id, user_id, file_id, file_name, status) VALUES (?, ?, ?, ?, ?)',
+                 (req_id, m.from_user.id, m.document.file_id, m.document.file_name, 'pending'))
+    conn.commit()
+    conn.close()
+
+    bot.send_message(m.chat.id, f"✅ **تم استلام ملفك بنجاح!**\n🆔 رقم الطلب: `{req_id}`\n⏳ يرجى انتظار موافقة الإدارة سيصلك إشعار فور التنصيب.")
+    
+    # إشعار الأدمن
+    admin_markup = types.InlineKeyboardMarkup()
+    admin_markup.add(types.InlineKeyboardButton("✅ موافقة", callback_data=f"approve_{req_id}"),
+                     types.InlineKeyboardButton("❌ رفض", callback_data=f"reject_{req_id}"))
+    bot.send_message(ADMIN_ID, f"🔔 **طلب تنصيب جديد!**\n👤 المستخدم: {m.from_user.id}\n📄 الملف: {m.document.file_name}\n🆔 الطلب: {req_id}", reply_markup=admin_markup)
+
+# ----------------------------------------------------------
 # 💳 نـظـام الـمـحـفـظـة (Wallet Logic)
 # ----------------------------------------------------------
 @bot.callback_query_handler(func=lambda c: c.data == "wallet")
 def wallet_menu(c):
     uid = c.from_user.id
     points = get_points(uid)
-    
     wallet_text = f"""
 — — — — — — — — — — — — — —
 💳 مـحـفـظـتـك الـرقـمـيـة
 — — — — — — — — — — — — — —
 💰 رصيدك الحالي: {points} نقطة
-🆔 آيديك: {uid}
-— — — — — — — — — — — — — —
-📢 يمكنك استخدام النقاط لتمديد استضافة بوتاتك.
 — — — — — — — — — — — — — —
     """
     markup = types.InlineKeyboardMarkup()
@@ -122,7 +156,7 @@ def wallet_menu(c):
 
 @bot.callback_query_handler(func=lambda c: c.data == "use_gift_code")
 def ask_for_code(c):
-    msg = bot.send_message(c.message.chat.id, "🎫 أرسل كود الهدية الآن:")
+    msg = bot.send_message(c.message.chat.id, "🎫 أرسل كود الهدية:")
     bot.register_next_step_handler(msg, process_gift_code)
 
 def process_gift_code(m):
@@ -130,98 +164,21 @@ def process_gift_code(m):
     code_text = m.text.strip()
     conn = get_db()
     code_data = conn.execute('SELECT * FROM gift_codes WHERE code = ?', (code_text,)).fetchone()
-    
     if not code_data:
-        bot.send_message(m.chat.id, "❌ الكود غير صحيح أو انتهت صلاحيته.")
+        bot.send_message(m.chat.id, "❌ كود خاطئ.")
     else:
         used = conn.execute('SELECT 1 FROM used_codes WHERE user_id = ? AND code = ?', (uid, code_text)).fetchone()
-        if used:
-            bot.send_message(m.chat.id, "⚠️ لقد استخدمت هذا الكود من قبل!")
-        elif code_data['current_uses'] >= code_data['max_uses']:
-            bot.send_message(m.chat.id, "🚫 هذا الكود وصل للحد الأقصى من الاستخدام.")
+        if used: bot.send_message(m.chat.id, "⚠️ استخدمته سابقاً.")
         else:
             conn.execute('UPDATE users SET points = points + ? WHERE user_id = ?', (code_data['points'], uid))
             conn.execute('UPDATE gift_codes SET current_uses = current_uses + 1 WHERE code = ?', (code_text,))
             conn.execute('INSERT INTO used_codes (user_id, code) VALUES (?, ?)', (uid, code_text))
             conn.commit()
-            bot.send_message(m.chat.id, f"✅ تم تفعيل الكود بنجاح! مبروك حصلت على {code_data['points']} نقطة.")
+            bot.send_message(m.chat.id, f"✅ حصلت على {code_data['points']} نقطة!")
     conn.close()
 
 # ----------------------------------------------------------
-# 📂 مـشـاريـعـي والـروابـط
-# ----------------------------------------------------------
-@bot.callback_query_handler(func=lambda c: c.data == "my_projects")
-def my_projects_list(c):
-    uid = c.from_user.id
-    conn = get_db()
-    bots = conn.execute('SELECT * FROM active_bots WHERE user_id = ?', (uid,)).fetchall()
-    conn.close()
-    
-    if not bots:
-        bot.answer_callback_query(c.id, "❌ ليس لديك مشاريع نشطة حالياً.", show_alert=True)
-        return
-        
-    markup = types.InlineKeyboardMarkup()
-    for b in bots:
-        markup.add(types.InlineKeyboardButton(f"🤖 {b['bot_name']}", callback_data=f"view_bot_{b['id']}"))
-    markup.add(types.InlineKeyboardButton("🔙 رجوع", callback_data="back_home"))
-    bot.edit_message_text("📂 **مشاريعك المستضافة:**", c.message.chat.id, c.message.message_id, reply_markup=markup)
-
-@bot.callback_query_handler(func=lambda c: c.data.startswith("view_bot_"))
-def view_bot_details(c):
-    bid = c.data.split("_")[2]
-    conn = get_db()
-    b = conn.execute('SELECT * FROM active_bots WHERE id = ?', (bid,)).fetchone()
-    conn.close()
-    
-    if b:
-        exp = datetime.strptime(b['expiry_time'], '%Y-%m-%d %H:%M:%S')
-        rem = exp - datetime.now()
-        token = hashlib.md5(str(b['user_id']).encode()).hexdigest()[:8]
-        api_link = f"https://titan-v37.net/api/connect?pid={b['process_id']}&auth={token}"
-        
-        details = f"""
-— — — — — — — — — — — — — —
-🤖 تفاصيل المشروع: {b['bot_name']}
-— — — — — — — — — — — — — —
-⏱️ المتبقي: {rem.days} يوم و {rem.seconds//3600} ساعة
-🆔 العملية (PID): {b['process_id']}
-🌐 الحالة: قيد التشغيل ✅
-
-🔗 رابط الاتصال التلقائي:
-`{api_link}`
-— — — — — — — — — — — — — —
-        """
-        markup = types.InlineKeyboardMarkup()
-        markup.add(types.InlineKeyboardButton("🔴 إيقاف المشروع", callback_data=f"stop_{b['id']}"))
-        markup.add(types.InlineKeyboardButton("🔙 رجوع", callback_data="my_projects"))
-        bot.edit_message_text(details, c.message.chat.id, c.message.message_id, reply_markup=markup, parse_mode="Markdown")
-
-# ----------------------------------------------------------
-# 📊 حـالـة الـسـيـرفـر
-# ----------------------------------------------------------
-@bot.callback_query_handler(func=lambda c: c.data == "server_status")
-def server_status(c):
-    cpu = psutil.cpu_percent()
-    ram = psutil.virtual_memory().percent
-    uptime = str(timedelta(seconds=int(time.time() - psutil.boot_time())))
-    
-    status_text = f"""
-— — — — — — — — — — — — — —
-📡 حالة سيرفر تايتان V37
-— — — — — — — — — — — — — —
-⚙️ استهلاك المعالج: {cpu}%
-🧠 استهلاك الرام: {ram}%
-⏱️ وقت التشغيل: {uptime}
-— — — — — — — — — — — — — —
-    """
-    markup = types.InlineKeyboardMarkup()
-    markup.add(types.InlineKeyboardButton("🔄 تحديث", callback_data="server_status"))
-    markup.add(types.InlineKeyboardButton("🔙 رجوع", callback_data="back_home"))
-    bot.edit_message_text(status_text, c.message.chat.id, c.message.message_id, reply_markup=markup)
-
-# ----------------------------------------------------------
-# ⚙️ لـوحـة الإدارة (Admin Panel)
+# ⚙️ لـوحـة الإدارة والـمـوافـقـة (Admin Control)
 # ----------------------------------------------------------
 @bot.callback_query_handler(func=lambda c: c.data == "admin_panel")
 def admin_panel(c):
@@ -234,21 +191,25 @@ def admin_panel(c):
     )
     bot.edit_message_text("⚙️ **لوحة التحكم العليا:**", c.message.chat.id, c.message.message_id, reply_markup=markup)
 
-@bot.callback_query_handler(func=lambda c: c.data == "adm_gen_code")
-def adm_gen_code_start(c):
-    msg = bot.send_message(c.message.chat.id, "🎫 أرسل (النقاط : عدد الأشخاص) مثال `100:5`:")
-    bot.register_next_step_handler(msg, finalize_gen_code)
-
-def finalize_gen_code(m):
-    try:
-        pts, uses = m.text.split(":")
-        code = f"TITAN-{secrets.token_hex(3).upper()}"
-        conn = get_db()
-        conn.execute('INSERT INTO gift_codes (code, points, max_uses) VALUES (?, ?, ?)', (code, int(pts), int(uses)))
-        conn.commit()
-        conn.close()
-        bot.send_message(m.chat.id, f"✅ تم إنشاء الكود: `{code}`")
-    except: bot.send_message(m.chat.id, "❌ خطأ في التنسيق.")
+@bot.callback_query_handler(func=lambda c: c.data.startswith(("approve_", "reject_")))
+def handle_admin_decision(c):
+    action, req_id = c.data.split("_")
+    conn = get_db()
+    req = conn.execute('SELECT * FROM installation_requests WHERE req_id = ?', (req_id,)).fetchone()
+    
+    if action == "approve":
+        # محاكاة التنصيب وإضافة للبوتات النشطة
+        conn.execute('INSERT INTO active_bots (user_id, bot_name, process_id, expiry_time, status) VALUES (?, ?, ?, ?, ?)',
+                     (req['user_id'], req['file_name'], secrets.token_hex(3), (datetime.now() + timedelta(days=30)).strftime('%Y-%m-%d %H:%M:%S'), 'running'))
+        conn.execute('UPDATE users SET points = points - 10 WHERE user_id = ?', (req['user_id'],))
+        bot.send_message(req['user_id'], f"🎉 **مبروك!** تم قبول طلبك وتصنيب بوتك `{req['file_name']}` بنجاح لمدة 30 يوم.")
+    else:
+        bot.send_message(req['user_id'], f"❌ عذراً، تم رفض طلب تنصيب الملف `{req['file_name']}` من قبل الإدارة.")
+    
+    conn.execute('DELETE FROM installation_requests WHERE req_id = ?', (req_id,))
+    conn.commit()
+    conn.close()
+    bot.edit_message_text(f"✅ تم معالجة الطلب بنجاح ({action}).", c.message.chat.id, c.message.message_id)
 
 # ----------------------------------------------------------
 # 🔙 التنقل والتشغيل
@@ -258,7 +219,12 @@ def back_home(c):
     bot.delete_message(c.message.chat.id, c.message.message_id)
     start(c)
 
+@bot.callback_query_handler(func=lambda c: c.data == "server_status")
+def server_status_h(c):
+    text = f"📡 حالة السيرفر:\n⚙️ CPU: {psutil.cpu_percent()}%\n🧠 RAM: {psutil.virtual_memory().percent}%"
+    bot.edit_message_text(text, c.message.chat.id, c.message.message_id, reply_markup=types.InlineKeyboardMarkup().add(types.InlineKeyboardButton("🔙 رجوع", callback_data="back_home")))
+
 if __name__ == "__main__":
     if not os.path.exists(UPLOAD_FOLDER): os.makedirs(UPLOAD_FOLDER)
-    print("🔥 Titan V37 Mega Pro is Online!")
+    print("🔥 Titan V37 Mega Pro is Ready!")
     bot.infinity_polling()
