@@ -279,7 +279,32 @@ def user_redeem_code(m):
     conn.close()
 
 if __name__ == "__main__":
-    threading.Thread(target=lambda: app.run(host='0.0.0.0', port=int(os.environ.get("PORT", 5000))), daemon=True).start()
-    bot.infinity_polling()
+    # 1. إعداد Flask للعمل في مسار (Thread) منفصل مع تفعيل تعدد المسارات
+    # threaded=True: تسمح بمعالجة طلبات الأداة الخارجية حتى لو كان البوت مشغولاً
+    flask_thread = threading.Thread(
+        target=lambda: app.run(
+            host='0.0.0.0', 
+            port=int(os.environ.get("PORT", 5000)), 
+            threaded=True, 
+            debug=False, 
+            use_reloader=False
+        ), 
+        daemon=True
+    )
+    flask_thread.start()
+
+    # 2. تشغيل البوت مع زيادة وقت الانتظار (Timeout)
+    # هذا يمنع البوت من قطع الاتصال عند معالجة ملفات ثقيلة مثل m6.py
+    print("🚀 تايتان V37 يعمل الآن بنظام الاستجابة السريعة...")
+    try:
+        bot.infinity_polling(
+            timeout=90, 
+            long_polling_timeout=90, 
+            logger_level=None
+        )
+    except Exception as e:
+        print(f"⚠️ خطأ في البوت: {e}")
+        time.sleep(5)
+
 
 
