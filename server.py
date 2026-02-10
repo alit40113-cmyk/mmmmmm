@@ -36,7 +36,7 @@ def init_db():
 
 init_db()
 
-# --- [ خادم الويب - جلب الكود ] ---
+# --- [ خادم الويب ] ---
 @app.route('/')
 def health(): return "Titan Online", 200
 
@@ -78,7 +78,22 @@ def start(m):
     txt, kb = main_kb(uid, m.from_user.first_name, user['points'])
     bot.send_message(m.chat.id, txt, reply_markup=kb)
 
-# --- [ معالجة الأزرار والتربيط الكامل ] ---
+# --- [ 📤 دالة التنصيب الأصلية (بدون تغيير) ] ---
+def handle_upload(m):
+    if not m.document or not m.document.file_name.endswith('.py'):
+        bot.send_message(m.chat.id, "❌ أرسل ملف بايثون فقط.")
+        return
+    rid = secrets.token_hex(3).upper()
+    conn = get_db()
+    conn.execute('INSERT INTO requests (req_id, user_id, file_name, file_id) VALUES (?, ?, ?, ?)', (rid, m.from_user.id, m.document.file_name, m.document.file_id))
+    conn.commit(); conn.close()
+    kb = types.InlineKeyboardMarkup(row_width=2).add(
+        types.InlineKeyboardButton("يوم (5ن)", callback_data=f"set_days_1_{rid}"),
+        types.InlineKeyboardButton("أسبوع (35ن)", callback_data=f"set_days_7_{rid}"),
+        types.InlineKeyboardButton("شهر (150ن)", callback_data=f"set_days_30_{rid}"))
+    bot.send_message(m.chat.id, "🗓️ اختر مدة الاستضافة:", reply_markup=kb)
+
+# --- [ 🔗 معالجة الأزرار والتربيط الكامل ] ---
 @bot.callback_query_handler(func=lambda c: True)
 def router(c):
     uid, cid, mid = c.from_user.id, c.message.chat.id, c.message.message_id
@@ -113,8 +128,13 @@ def router(c):
         lid = c.data.split("_")[1]
         conn.execute('DELETE FROM projects WHERE link_id = ?', (lid,))
         conn.commit()
-        bot.answer_callback_query(c.id, "✅ تم حذف المشروع بنجاح.")
-        router(c) # العودة لقائمة المشاريع
+        bot.answer_callback_query(c.id, "✅ تم حذف المشروع.")
+        # العودة لقائمة المشاريع بعد الحذف
+        projs = conn.execute('SELECT * FROM projects WHERE user_id = ?', (uid,)).fetchall()
+        kb = types.InlineKeyboardMarkup(row_width=2)
+        for p in projs: kb.add(types.InlineKeyboardButton(f"📄 {p['name']}", callback_data=f"v_{p['link_id']}"))
+        kb.add(types.InlineKeyboardButton("🔙 رجوع", callback_data="back_home"))
+        bot.edit_message_text("📂 مشاريعك الحالية:", cid, mid, reply_markup=kb)
 
     elif c.data == "nav_wall":
         txt = f"💳 **المحفظة**\n💰 رصيدك: `{user['points']}` نقطة"
@@ -143,31 +163,25 @@ def router(c):
                 types.InlineKeyboardButton("❌ رفض", callback_data=f"rej_{r['req_id']}"))
             bot.send_message(cid, f"🔔 طلب من: `{r['user_id']}`\n📄 ملف: `{r['file_name']}`\n📅 مدة: {r['days']} يوم", reply_markup=kb)
 
-    elif c.data.startswith("rej_"):
-        rid = c.data.split("_")[1]
-        conn.execute('DELETE FROM requests WHERE req_id = ?', (rid,))
-        conn.commit()
-        bot.edit_message_text("❌ تم رفض الطلب وحذفه.", cid, mid)
-
     elif c.data == "adm_stats":
         u = conn.execute('SELECT COUNT(*) FROM users').fetchone()[0]
         p = conn.execute('SELECT COUNT(*) FROM projects').fetchone()[0]
         bot.answer_callback_query(c.id, f"👥 مستخدمين: {u}\n🚀 مشاريع: {p}", show_alert=True)
 
     elif c.data == "adm_bc":
-        msg = bot.send_message(cid, "📢 أرسل الآن الرسالة التي تريد إذاعتها لكل المستخدمين:")
+        msg = bot.send_message(cid, "📢 أرسل رسالة الإذاعة:")
         bot.register_next_step_handler(msg, admin_broadcast_msg)
 
     elif c.data == "adm_users":
-        msg = bot.send_message(cid, "👤 أرسل (آيدي المستخدم) ثم (عدد النقاط) لإضافتها:\nمثال: `8504553407 100`")
+        msg = bot.send_message(cid, "👤 أرسل (آيدي مسافة نقاط):")
         bot.register_next_step_handler(msg, admin_edit_points)
 
     elif c.data == "adm_gen_code":
-        msg = bot.send_message(cid, "🎫 أرسل (عدد النقاط) ثم (عدد المرات):\nمثال: `50 10` لإنشاء كود بـ 50 نقطة لـ 10 أشخاص")
+        msg = bot.send_message(cid, "🎫 أرسل (نقاط مسافة عدد):")
         bot.register_next_step_handler(msg, admin_create_code)
 
     elif c.data == "use_gift_code":
-        msg = bot.send_message(cid, "🎫 أرسل كود الشحن الآن:")
+        msg = bot.send_message(cid, "🎫 أرسل كود الشحن:")
         bot.register_next_step_handler(msg, user_redeem_code)
 
     elif c.data.startswith("set_days_"):
@@ -186,89 +200,64 @@ def router(c):
 
     conn.close()
 
-# --- [ الدوال البرمجية الكاملة ] ---
-
-def handle_upload(m):
-    if not m.document or not m.document.file_name.endswith('.py'):
-        bot.send_message(m.chat.id, "❌ أرسل ملف .py فقط."); return
-    rid = secrets.token_hex(3).upper()
-    conn = get_db()
-    conn.execute('INSERT INTO requests (req_id, user_id, file_name, file_id) VALUES (?, ?, ?, ?)', (rid, m.from_user.id, m.document.file_name, m.document.file_id))
-    conn.commit(); conn.close()
-    kb = types.InlineKeyboardMarkup(row_width=2).add(
-        types.InlineKeyboardButton("يوم (5ن)", callback_data=f"set_days_1_{rid}"),
-        types.InlineKeyboardButton("أسبوع (35ن)", callback_data=f"set_days_7_{rid}"),
-        types.InlineKeyboardButton("شهر (150ن)", callback_data=f"set_days_30_{rid}"))
-    bot.send_message(m.chat.id, "🗓️ اختر مدة الاستضافة:", reply_markup=kb)
+# --- [ الدوال البرمجية ] ---
 
 def admin_broadcast_msg(m):
-    conn = get_db()
-    users = conn.execute('SELECT user_id FROM users').fetchall()
-    conn.close()
+    conn = get_db(); users = conn.execute('SELECT user_id FROM users').fetchall(); conn.close()
     count = 0
     for u in users:
-        try:
-            bot.copy_message(u['user_id'], m.chat.id, m.message_id)
-            count += 1
+        try: bot.copy_message(u['user_id'], m.chat.id, m.message_id); count += 1
         except: pass
-    bot.send_message(m.chat.id, f"✅ تم إرسال الإذاعة إلى {count} مستخدم.")
+    bot.send_message(m.chat.id, f"✅ تم الإرسال لـ {count} مستخدم.")
 
 def admin_edit_points(m):
     try:
-        tid, amt = m.text.split()
-        conn = get_db()
+        tid, amt = m.text.split(); conn = get_db()
         conn.execute('UPDATE users SET points = points + ? WHERE user_id = ?', (int(amt), int(tid)))
         conn.commit(); conn.close()
-        bot.send_message(m.chat.id, f"✅ تم إضافة {amt} نقطة للحساب {tid}.")
-    except: bot.send_message(m.chat.id, "❌ خطأ! تأكد من كتابة الآيدي ثم مسافة ثم النقاط.")
+        bot.send_message(m.chat.id, "✅ تم التعديل.")
+    except: bot.send_message(m.chat.id, "❌ خطأ في الصيغة.")
 
 def admin_create_code(m):
     try:
-        pts, uses = m.text.split()
-        code = f"TITAN-{secrets.token_hex(3).upper()}"
-        conn = get_db()
-        conn.execute('INSERT INTO gift_codes (code, points, max_uses) VALUES (?, ?, ?)', (code, int(pts), int(uses)))
+        pts, uses = m.text.split(); code = f"TITAN-{secrets.token_hex(3).upper()}"
+        conn = get_db(); conn.execute('INSERT INTO gift_codes (code, points, max_uses) VALUES (?, ?, ?)', (code, int(pts), int(uses)))
         conn.commit(); conn.close()
-        bot.send_message(m.chat.id, f"✅ كود جديد:\n`{code}`\nيعطي {pts} نقطة لـ {uses} مستخدم.")
-    except: bot.send_message(m.chat.id, "❌ خطأ في الصيغة.")
+        bot.send_message(m.chat.id, f"✅ كود جديد: `{code}`")
+    except: bot.send_message(m.chat.id, "❌ خطأ.")
 
 def user_redeem_code(m):
-    code = m.text.strip()
-    conn = get_db()
+    code = m.text.strip(); conn = get_db()
     c = conn.execute('SELECT * FROM gift_codes WHERE code = ?', (code,)).fetchone()
     used = conn.execute('SELECT 1 FROM used_codes WHERE user_id = ? AND code = ?', (m.from_user.id, code)).fetchone()
     if c and not used and c['current_uses'] < c['max_uses']:
         conn.execute('UPDATE users SET points = points + ? WHERE user_id = ?', (c['points'], m.from_user.id))
         conn.execute('UPDATE gift_codes SET current_uses = current_uses + 1 WHERE code = ?', (code,))
         conn.execute('INSERT INTO used_codes (user_id, code) VALUES (?, ?)', (m.from_user.id, code))
-        conn.commit()
-        bot.send_message(m.chat.id, f"✅ مبروك! شحنت {c['points']} نقطة.")
-    else: bot.send_message(m.chat.id, "❌ الكود خطأ، منتهي، أو استخدمته سابقاً.")
+        conn.commit(); bot.send_message(m.chat.id, "✅ تم الشحن.")
+    else: bot.send_message(m.chat.id, "❌ كود غير صالح.")
     conn.close()
 
 def process_approval(rid, cid, mid):
-    conn = get_db()
-    req = conn.execute('SELECT * FROM requests WHERE req_id = ?', (rid,)).fetchone()
+    conn = get_db(); req = conn.execute('SELECT * FROM requests WHERE req_id = ?', (rid,)).fetchone()
     if req:
         cost = req['days'] * 5
         u_pts = conn.execute('SELECT points FROM users WHERE user_id = ?', (req['user_id'],)).fetchone()['points']
         if u_pts >= cost:
-            lid = secrets.token_hex(4).upper()
-            final_path = os.path.join(FILES_DIR, f"{lid}.py")
+            lid = secrets.token_hex(4).upper(); final_path = os.path.join(FILES_DIR, f"{lid}.py")
             f_info = bot.get_file(req['file_id'])
             with open(final_path, 'wb') as f: f.write(bot.download_file(f_info.file_path))
             exp = (datetime.now() + timedelta(days=req['days'])).strftime('%Y-%m-%d %H:%M:%S')
             conn.execute('UPDATE users SET points = points - ? WHERE user_id = ?', (cost, req['user_id']))
             conn.execute('INSERT INTO projects (user_id, name, link_id, file_path, status, expiry) VALUES (?, ?, ?, ?, ?, ?)', 
                          (req['user_id'], req['file_name'], lid, final_path, "مفعل 🟢", exp))
-            conn.execute('DELETE FROM requests WHERE req_id = ?', (rid,))
-            conn.commit()
-            bot.send_message(req['user_id'], f"✅ تم قبول طلبك وتشغيل مشروعك!\n🔗 الرابط المباشر:\n`{BASE_URL}/run/{lid}`")
-            bot.edit_message_text("✅ تم قبول الطلب بنجاح.", cid, mid)
-        else: bot.send_message(cid, "❌ رصيد المستخدم لا يكفي.")
+            conn.execute('DELETE FROM requests WHERE req_id = ?', (rid,)); conn.commit()
+            bot.send_message(req['user_id'], f"✅ تم القبول!\n🔗 `{BASE_URL}/run/{lid}`")
+            bot.edit_message_text("✅ تم القبول.", cid, mid)
+        else: bot.send_message(cid, "❌ رصيد ناقص.")
     conn.close()
 
-# --- [ تشغيل الخادم والمنفذ لـ Railway ] ---
+# --- [ تشغيل الـ Port ] ---
 def run_api():
     port = int(os.environ.get("PORT", 5000))
     app.run(host='0.0.0.0', port=port)
