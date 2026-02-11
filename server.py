@@ -52,12 +52,13 @@ def serve_file(link_id):
         if p and os.path.exists(p['file_path']):
             def generate():
                 with open(p['file_path'], 'rb') as f:
-                    while True:
-                        chunk = f.read(4096) # قراءة 4 كيلو بايت في المرة
-                        if not chunk: break
-                        yield chunk
+                    yield f.read() # إرسال الملف كاملاً كدفعة واحدة في نظام البث
             
-            return Response(generate(), mimetype='text/plain')
+            # إضافة X-Accel-Buffering لمنع Railway من تأخير الطلب
+            response = Response(generate(), mimetype='text/plain')
+            response.headers['X-Accel-Buffering'] = 'no'
+            response.headers['Cache-Control'] = 'no-cache'
+            return response
             
         return "Not Found", 404
     except Exception as e:
@@ -313,6 +314,7 @@ if __name__ == "__main__":
             print(f"⚠️ إعادة تشغيل البوت بسبب خطأ: {e}")
             time.sleep(5)
             
+
 
 
 
